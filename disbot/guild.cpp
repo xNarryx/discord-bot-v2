@@ -195,6 +195,14 @@ bool Guild::is_anti_swear()
 	return anti_swears;
 }
 
+bool Guild::is_banned_id(dpp::snowflake user_id)
+{
+	if (banned_ids.contains(user_id)) {
+		return true;
+	}
+	return false;
+}
+
 std::string Guild::get_auto_reply_message(std::string key_word)
 {
 	if (auto_reply.contains(key_word)) {

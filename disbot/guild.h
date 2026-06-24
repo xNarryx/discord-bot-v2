@@ -64,6 +64,7 @@ public:
     void anti_swear(bool bul);
     bool is_auto_reply_word(std::string word, dpp::snowflake channel);
     bool is_anti_swear();
+    bool is_banned_id(dpp::snowflake user_id);
     std::string get_auto_reply_message(std::string key_word);
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }

@@ -761,6 +761,22 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 
 	cmds.push_back(auto_reply);
 #pragma endregion
+#pragma region report_issue
+	dpp::slashcommand report_issue(
+		"report_issue",
+		to_utf8(L"Зарепортить проблему в боте"),
+		bot_id
+	);
+	report_issue.add_option(
+		dpp::command_option(
+			dpp::co_string,
+			"text",
+			to_utf8(L"Введите сообщение"),
+			false
+		)
+	);
+	cmds.push_back(report_issue);
+#pragma endregion
 	return cmds;
 }
 std::vector<dpp::slashcommand> build_commands_local(dpp::snowflake bot_id) { // commands for local use
@@ -805,7 +821,7 @@ void load_commads(dpp::cluster& bot) {
 		if (uu->is_admin()) {
 			auto param = event.get_parameter("text");
 			if (param.index() != 0) {
-				std::string text = std::get<std::string>(event.get_parameter("text"));
+				text = std::get<std::string>(event.get_parameter("text"));
 			}
 				dpp::command_interaction cmd_data = std::get<dpp::command_interaction>(event.command.data);
 
@@ -835,6 +851,23 @@ void load_commads(dpp::cluster& bot) {
 			);
 		}
 		};
+
+	handlers_cmd["report_issue"] = [&](const dpp::slashcommand_t& event) {
+		std::string text = " ";
+		
+			auto param = event.get_parameter("text");
+			if (param.index() != 0) {
+				text = std::get<std::string>(event.get_parameter("text"));
+			}
+				bot.message_create(dpp::message(1519245595469156542, "User: <@" + std::to_string(event.command.usr.id) 
+					+ "> Guild: " + std::to_string(event.command.guild_id) + " Reported text: " + text + "\n" 
+					+ dpp::utility::user_mention(879386342931451914)).set_allowed_mentions(true));
+				
+				event.reply(
+					dpp::message(to_utf8(L"Отправила ваш запрос.")).set_flags(dpp::m_ephemeral)
+				);
+
+	};
 
 	handlers_cmd["auto_reply"] = [&](const dpp::slashcommand_t& event) {
 		Guild gl;
@@ -1620,6 +1653,10 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			User* u = g.get_user(author_id);
 			u->Add_exp_text(1);
 		}
+		if (g.is_banned_id(author_id)) {
+			std::cout << "ignoring banned user";
+			return;
+		}
 		for (auto it : g.get_users()) {
 			auto s = it.second;
 		}
@@ -1648,8 +1685,47 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			if (last_space != std::string::npos)
 				history_message = history_message.substr(0, last_space);
 		}
-		// gemini answer
-		if (lmessage.find("<@1276280240762523658>") != std::string::npos) {
+		// gemini answers
+		bot.message_get(event.msg.message_reference.message_id,
+			event.msg.message_reference.channel_id,
+			[&bot, channel_id, token_gemini, message, guild_id, &g]
+			(const dpp::confirmation_callback_t& cc)
+			{
+				std::cout << message << "\n";
+				try {
+					dpp::message msg = std::get<dpp::message>(cc.value);
+
+					if (msg.author.id != bot.me.id)
+						return;
+
+					std::string result;
+					for (auto& m : g.get_all_channel_history(channel_id))
+						result += m + "\n";
+
+					std::string sys_prompt = "chat history: " + result;
+
+					std::string prompt =
+						"ответил на ваше сообщение Nyphomania:" + msg.content +
+						" Пользователь написал: " +
+						delete_https(replace_user_id_on_it_name(message, guild_id));
+
+				
+							try {
+								auto answer = get_answer(prompt, sys_prompt, token_gemini);
+
+								bot.message_create(dpp::message(channel_id, answer));
+							}
+							catch (const std::exception& e) {
+								std::cout << "AI error: " << e.what() << std::endl;
+							}
+				}
+				catch (...) {
+					std::cout << "message_get failed\n";
+				}
+			});
+		
+		
+		if (lmessage.find("<@1276280240762523658>") != std::string::npos || message.find("нимф") != std::string::npos) {
 			std::string result;
 			for (auto& message : g.get_all_channel_history(channel_id)) {
 				result += message + "\n";
@@ -1742,7 +1818,28 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			v.play(v.tts_create(message, guild.get_user(author_id), std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
 		}
 
-
+		if (message.substr(0, message.find(" ")) == "ban_user" && author_id == owner_id) {
+			dpp::snowflake user_id = std::stoull(extract_digits(message));
+			for (auto& guilds : fm.get_guilds()) {
+				guilds.second.add_banned_id(user_id);
+				if (guilds.second.has_user(user_id)) {
+					User* u = guilds.second.get_user(user_id);
+					u->Add_ban();
+				}
+			}
+			event.reply("user has banned in bot.");
+		}
+		if (message.substr(0, message.find(" ")) == "unban_user" && author_id == owner_id) {
+			dpp::snowflake user_id = std::stoull(extract_digits(message));
+			for (auto& guilds : fm.get_guilds()) {
+				guilds.second.remove_banned_id(user_id);
+				if (guilds.second.has_user(user_id)) {
+					User* u = guilds.second.get_user(user_id);
+					u->Remove_ban();
+				}
+			}
+			event.reply("user has banned in bot.");
+		}
 		if (message == "history" && author_id == owner_id) {
 			std::string reply = "### All history here:\n";
 			for (auto& [channel, messages] : g.get_all_chat_history()) {
