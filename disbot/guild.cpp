@@ -2,7 +2,7 @@
 #include "User.h"
 #include <nlohmann/json.hpp>
 
-void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowflake> banned_ids, std::unordered_set<dpp::snowflake> admin_ids, std::unordered_set<dpp::snowflake> banned_channels, std::unordered_set<dpp::snowflake> tts_channels, std::unordered_map<dpp::snowflake, User> users, std::unordered_set<std::string> banned_words, std::vector<lvl_role> lvl_roles){
+void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowflake> banned_ids, std::unordered_set<dpp::snowflake> admin_ids, std::unordered_set<dpp::snowflake> banned_channels, std::unordered_set<dpp::snowflake> tts_channels, std::unordered_map<dpp::snowflake, User> users, std::unordered_set<std::string> banned_words, std::unordered_map<std::string, AutoReplyData> auto_reply, std::vector<lvl_role> lvl_roles){
 	this->guild_id = guild_id;
 	this->banned_ids = banned_ids;
 	this->admin_ids = admin_ids;
@@ -10,7 +10,27 @@ void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowfl
 	this->tts_channels = tts_channels;
 	this->users = users;
 	this->banned_channels = banned_channels;
+	this->auto_reply = auto_reply;
 	this->lvl_roles = lvl_roles;
+}
+
+void Guild::add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel)
+{
+	if (!auto_reply.contains(key_word)) {
+		AutoReplyData data;
+		data.channel_id = channel;
+		data.message = message;
+		auto_reply[key_word] = data;
+	}
+}
+
+bool Guild::remove_auto_reply(std::string key_word)
+{
+	if (auto_reply.contains(key_word)) {
+		auto_reply.erase(key_word);
+		return true;
+	}
+	else return false;
 }
 
 void Guild::add_banned_id(dpp::snowflake banned_id){
@@ -118,20 +138,45 @@ bool Guild::remove_banned_word(std::string ban_word)
 
 bool Guild::has_banned_word(std::string ban_word)
 {
-	if (banned_words.contains(ban_word)) {
-		return true;
+	for (auto& word : banned_words) {
+		if (ban_word.find(word) != std::string::npos) {
+			return true;
+		}
 	}
 	return false;
 }
+
 
 void Guild::anti_swear(bool bul)
 {
 	anti_swears = bul;
 }
 
+bool Guild::is_auto_reply_word(std::string word, dpp::snowflake channel)
+{
+	/*for (auto& [key_word, message] : auto_reply) {
+		if (word.find(key_word) != std::string::npos) {
+			return true;
+		}
+	}
+	*/
+	if (auto_reply.contains(word))
+		if (auto_reply[word].channel_id == channel)
+		return true;
+	return false;
+}
+
 bool Guild::is_anti_swear()
 {
 	return anti_swears;
+}
+
+std::string Guild::get_auto_reply_message(std::string key_word)
+{
+	if (auto_reply.contains(key_word)) {
+		return auto_reply[key_word].message;
+	}
+	return std::string("");
 }
 
 

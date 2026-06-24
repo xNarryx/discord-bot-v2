@@ -14,6 +14,12 @@ struct lvl_role {
     std::string type;
 };
 
+struct AutoReplyData
+{
+    std::string message;
+    dpp::snowflake channel_id;
+};
+
 class Guild {
 private:
 	dpp::snowflake guild_id;
@@ -23,16 +29,20 @@ private:
 	std::unordered_set<dpp::snowflake> tts_channels;
     std::unordered_set<std::string> banned_words;
 	std::unordered_map<dpp::snowflake, User> users;
+    std::unordered_map<std::string, AutoReplyData> auto_reply;
     std::vector<lvl_role> lvl_roles;
     bool anti_swears;
 public:
     void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
-		std::unordered_set<dpp::snowflake> admin_ids = { 879386342931451914 },
-		std::unordered_set<dpp::snowflake> banned_channels = {},
-		std::unordered_set<dpp::snowflake> tts_channels = {},
-		std::unordered_map<dpp::snowflake, User> users = {},
+        std::unordered_set<dpp::snowflake> admin_ids = { 879386342931451914 },
+        std::unordered_set<dpp::snowflake> banned_channels = {},
+        std::unordered_set<dpp::snowflake> tts_channels = {},
+        std::unordered_map<dpp::snowflake, User> users = {},
         std::unordered_set<std::string> banned_words = {},
+        std::unordered_map<std::string, AutoReplyData> auto_reply = {},
         std::vector<lvl_role> lvl_roles = {});
+    void add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel);
+    bool remove_auto_reply(std::string key_word);
 	void add_banned_id(dpp::snowflake banned_id);
 	bool remove_banned_id(dpp::snowflake banned_id);
 	void add_admins_id(dpp::snowflake admin_id);
@@ -48,7 +58,10 @@ public:
     bool remove_banned_word(std::string ban_word);
     bool has_banned_word(std::string ban_word);
     void anti_swear(bool bul);
+    bool is_auto_reply_word(std::string word, dpp::snowflake channel);
     bool is_anti_swear();
+    std::string get_auto_reply_message(std::string key_word);
+    std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }
     std::vector<lvl_role> get_lvl_roles() const { return lvl_roles; }
 
@@ -99,6 +112,18 @@ public:
         }
         j["lvl_roles"] = lvl_roles_json;
 
+        nlohmann::json auto_reply_json;
+
+        for (const auto& [key, data] : auto_reply)
+        {
+            auto_reply_json[key] = {
+                {"message", data.message},
+                {"channel_id", static_cast<uint64_t>(data.channel_id)}
+            };
+        }
+
+        j["auto_reply"] = auto_reply_json;
+
         // banned_words
         j["banned_words"] = nlohmann::json::array();
         for (const auto& word : banned_words)
@@ -147,6 +172,20 @@ public:
                 g.lvl_roles.push_back(r);
             }
         }
+        // auto_reply
+        if (j.contains("auto_reply") && j["auto_reply"].is_object())
+        {
+            for (auto it = j["auto_reply"].begin(); it != j["auto_reply"].end(); ++it)
+            {
+                AutoReplyData data;
+
+                data.message = it.value().value("message", "");
+                data.channel_id = it.value().value("channel_id", 0ULL);
+
+                g.auto_reply[it.key()] = data;
+            }
+        }
+
         // banned_words
         if (j.contains("banned_words") && j["banned_words"].is_array()) {
             for (const auto& word : j["banned_words"])

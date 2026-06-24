@@ -17,7 +17,15 @@ file_manager fm;
 VoiceManager v;
 std::unordered_map<std::string, std::function<void(const dpp::slashcommand_t&)>> handlers_cmd;
 std::unordered_set<std::string> swears;
-
+bool has_swear(std::string str) {
+	for (auto& word : swears) {
+		
+		if (str.find(word) != std::string::npos) {
+			return(true);
+		}
+	}
+	return(false);
+}
 std::string to_utf8(const std::wstring& wstr) {
 	int size_needed = WideCharToMultiByte(CP_UTF8, 0, wstr.c_str(), (int)wstr.size(), NULL, 0, NULL, NULL);
 	std::string str_to(size_needed, 0);
@@ -80,34 +88,63 @@ std::vector<std::string> split(std::string str) {
 	}
 	return splited;
 }
-std::string normalize(const std::string str) {
-	std::unordered_set<char> chars = { '.', ',', ';', '\'', '[',']', '-', '=','_','+', '!', '@', '#' , '$', '%', '^', '&', '?', '*', '(', ')', '~', '`', ';', ':', '<', '>', '\\', '|' , '/', '{', '}' };
-	/*std::unordered_map<char, char> letters = {
-		{'0', 'о'}, 
-		{'4', 'е'},
-		{'e', 'е'}, 
-		{'l', 'л'}, 
-		{'a', 'а'}, 
-		{'o', 'о'}, 
-		{'y', 'у'}, 
-		{'і', 'ы'}, 
-		{'7', 'ч'}
-	};*/
-	std::string string, strings;
-	for (auto& ch : str) {
-		if (!chars.contains(ch)) {
-			string += ch;
-		}
+std::vector<std::string> utf8_split(const std::string& str)
+{
+	std::vector<std::string> result;
+
+	for (size_t i = 0; i < str.size();)
+	{
+		unsigned char c = str[i];
+
+		size_t len = 1;
+
+		if ((c & 0b10000000) == 0) len = 1;
+		else if ((c & 0b11100000) == 0b11000000) len = 2;
+		else if ((c & 0b11110000) == 0b11100000) len = 3;
+		else if ((c & 0b11111000) == 0b11110000) len = 4;
+
+		result.push_back(str.substr(i, len));
+		i += len;
 	}
-	/*for (auto& ch : to_utf8(string_to_wstring(string))) {
-		std::cout << "Гандон буква: " << ch << "\n";
+
+	return result;
+}
+std::string normalize(const std::string str) {
+	std::unordered_set<std::string> chars = {
+		".", ",", ";", "'", "[", "]", "-", "=", "_", "+",
+		"!", "@", "#", "$", "%", "^", "&", "?", "*",
+		"(", ")", "~", "`", ":", "<", ">", "\\", "|", "/", "{", "}"
+	};
+
+	std::unordered_map<std::string, std::string> letters = {
+		{"0", "о"},
+		{"4", "е"},
+		{"e", "е"},
+		{"l", "л"},
+		{"a", "а"},
+		{"o", "о"},
+		{"y", "у"},
+		{"i", "й"},
+		{"x", "х"},
+		{"p", "п"},
+		{"u", "у"},
+		{"7", "ч"}
+	};
+
+
+	std::string string, prevch = "";
+	auto sybmols = utf8_split(str);
+	for (auto& ch : sybmols) {
+		if (chars.contains(ch) || ch == prevch)
+			continue;
 		if (letters.contains(ch)) {
-			strings += letters[ch];
+			string += letters[ch];
 		}
 		else {
-			strings += ch;
+			string += ch;
 		}
-	} */
+		prevch = ch;
+	}
 	return string;
 }
 void load_swears(const std::string& filename) {
@@ -229,7 +266,7 @@ void bot_thread_exp_lvls(dpp::cluster& bot) {
 		}).detach();
 }
 
-std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) {
+std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // commands for global
 	std::vector<dpp::slashcommand> cmds;
 
 #pragma region Say
@@ -551,6 +588,66 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) {
 
 	cmds.push_back(tts);
 #pragma endregion
+#pragma region auto_reply
+	dpp::slashcommand auto_reply(
+		"auto_reply",
+		to_utf8(L"Добавить или убрать авто ответ для пользователя."),
+		bot_id
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "type", "Выберите вариант!", true)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить авто-ответ"), "add_reply"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"убрать авто-ответ"), "remove_reply"))
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "help-delete", "ПОМОЩЬ! И Удаление уже существующих автоматических ответов пользователям.", false)
+		.set_auto_complete(true)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "key_word", "Обязательно: Введите ключеное слово на которое будет ответ", false)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "message", "Обязательно: Введите которое будет отсылаться пользователю", false)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_channel, "channel", "Обязательно: Введите канал где будет работать ответ", false)
+	);
+
+	cmds.push_back(auto_reply);
+#pragma endregion
+	return cmds;
+}
+std::vector<dpp::slashcommand> build_commands_local(dpp::snowflake bot_id) { // commands for local use
+	std::vector<dpp::slashcommand> cmds;
+
+#pragma region auto_reply
+	dpp::slashcommand auto_reply(
+		"auto_reply",
+		to_utf8(L"Добавить или убрать авто ответ для пользователя."),
+		bot_id
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "type", "Выберите вариант!", true)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить авто-ответ"), "add_reply"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"убрать авто-ответ"), "remove_reply"))
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "help-delete", "ПОМОЩЬ! И Удаление уже существующих автоматических ответов пользователям.", false)
+		.set_auto_complete(true)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "key_word", "Обязательно: Введите ключеное слово на которое будет ответ", false)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_string, "message", "Обязательно: Введите которое будет отсылаться пользователю", false)
+	);
+	auto_reply.add_option(
+		dpp::command_option(dpp::co_channel, "channel", "Обязательно: Введите канал где будет работать ответ", false)
+	);
+	
+	cmds.push_back(auto_reply);
+#pragma endregion
+
 	return cmds;
 }
 void load_commads(dpp::cluster& bot) {
@@ -592,6 +689,35 @@ void load_commads(dpp::cluster& bot) {
 			);
 		}
 		};
+
+	handlers_cmd["auto_reply"] = [&](const dpp::slashcommand_t& event) {
+		Guild gl;
+		gl = fm.get_guild_r(event.command.guild_id);
+		User* uu = gl.get_user(event.command.usr.id);
+		if (uu->is_admin()) {
+			std::string type = std::get<std::string>(event.get_parameter("type"));
+			if (type == "add_reply") {
+				std::string key_word = std::get<std::string>(event.get_parameter("key_word"));
+				std::string message = std::get<std::string>(event.get_parameter("message"));
+				Guild& g = fm.get_guild(event.command.guild_id);
+				dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
+				g.add_auto_reply(key_word, message, channel);
+				event.reply("Добавила авто ответ с **ключом**: " + key_word);
+				
+			}
+			else if (type == "remove_reply") {
+				std::string key_word = std::get<std::string>(event.get_parameter("help-delete"));
+				Guild& g = fm.get_guild(event.command.guild_id);
+				g.remove_auto_reply(key_word);
+				event.reply("Удалила авто ответ с **ключом**: " + key_word);
+			}
+		}
+		else {
+			event.reply(
+				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
+			);
+		}
+	};
 
 	handlers_cmd["tts"] = [&](const dpp::slashcommand_t& event) {
 		dpp::snowflake guild_id = event.command.guild_id;
@@ -800,11 +926,11 @@ void load_commads(dpp::cluster& bot) {
 		if (uu->is_admin()) {
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			dpp::snowflake warn_id = std::get<std::string>(event.get_parameter("warn_id"));
+			std::cout << warn_id << "\n";
 			if (warn_id != 0) {
 				Guild& g = fm.get_guild(event.command.guild_id);
 				User* u;
 				u = g.get_user(user_id);
-				std::cout << warn_id << "\n";
 				u->remove_warn(warn_id);
 				event.reply(to_utf8(L"Сняла варн пользователю!"));
 			}
@@ -1114,55 +1240,110 @@ int main()
 		});
 
 
-	bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
-		if (event.name == "warn_remove") {
-			
-
-			
-			
-			auto& opts = event.options;
-			dpp::snowflake user_id;
-			bool have_user = false;
-			for (auto& opt : opts) {
-				if (opt.name == "user" && opt.type == dpp::co_user) {
-					have_user = true;
-					user_id = std::get<dpp::snowflake>(opt.value);
-					break;
-				}
+bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
+	if (event.name == "warn_remove") {
+		auto& opts = event.options;
+		dpp::snowflake user_id;
+		bool have_user = false;
+		for (auto& opt : opts) {
+			if (opt.name == "user" && opt.type == dpp::co_user) {
+				have_user = true;
+				user_id = std::get<dpp::snowflake>(opt.value);
+				break;
 			}
-			if (!have_user) {
-				return;
-			}
-
-			
-			Guild& g = fm.get_guild_r(event.command.guild_id);
-
-			User* u = g.get_user(user_id);
-			auto warns = u->get_warns();
-
-			dpp::interaction_response resp(dpp::ir_autocomplete_reply);
-			size_t it = 0;
-			for (const auto& [id, reason] : warns) {
-				size_t size = 0;
-				if (reason.size() < 120) {
-					size = reason.size();
-				} else size = 120;
-				resp.add_autocomplete_choice(dpp::command_option_choice("#" + std::to_string(id) + " " + reason.substr(0, size), std::to_string(id)));
-				it++;
-				if (it >= 25) break;
-			}
-			if (warns.empty()) {
-				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(0)));
-			}
-			bot.interaction_response_create(
-				event.command.id,
-				event.command.token,
-				resp
-			);
+		}
+		if (!have_user) {
 			return;
 		}
-		});
 
+		Guild& g = fm.get_guild_r(event.command.guild_id);
+
+		User* u = g.get_user(user_id);
+		auto warns = u->get_warns();
+
+		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
+		size_t it = 0;
+		for (const auto& [id, reason] : warns) {
+			size_t size = 0;
+			if (reason.size() < 120) {
+				size = reason.size();
+			}
+			else size = 120;
+			resp.add_autocomplete_choice(dpp::command_option_choice("#" + std::to_string(id) + " " + reason.substr(0, size), std::to_string(id)));
+			it++;
+			if (it >= 25) break;
+		}
+		if (warns.empty()) {
+			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(0)));
+		}
+		bot.interaction_response_create(
+			event.command.id,
+			event.command.token,
+			resp
+		);
+		return;
+	}
+	if (event.name == "auto_reply") {
+		auto& opts = event.options;
+		bool have_string = false;
+		dpp::snowflake user_id = event.command.usr.id;
+		std::string str;
+		for (auto& opt : opts) {
+			if (opt.name == "type" && opt.type == dpp::co_string) {
+				have_string = true;
+				str = std::get<std::string>(opt.value);
+				break;
+			}
+		}
+		if (!have_string) {
+			return;
+		}
+
+		Guild& g = fm.get_guild_r(event.command.guild_id);
+
+		User* u = g.get_user(user_id);
+		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
+		if (u->is_admin()) {
+			if (str == "add_reply") {
+				std::cout << "TYPETYPETYPEYPTEPTPETP\n";
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите ключевое слово в key_word."), std::to_string(0)));
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите сообщение которое надо отправлять пользователю в message."), std::to_string(1)));
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите канал в котором будет отправка сообщения пользователям в channel."), std::to_string(2)));
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"(Бот будет проверять тоже только канал где выбран авто ответ для сообщения)"), std::to_string(2)));
+			
+			}
+			else if (str == "remove_reply") {
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Выберите вариант который надо удалить."), std::to_string(0)));
+				struct AutoReplyData
+				{
+					std::string message;
+					dpp::snowflake channel_id;
+				};
+				for (auto [key, auto_rep] : g.get_auto_reply_messages()) {
+					size_t size = 0;
+					if (auto_rep.message.size() < 120) {
+						size = auto_rep.message.size();
+					}
+					else size = 120;
+					resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(string_to_wstring(auto_rep.message).substr(0, size)), key));
+				}
+			}
+
+
+		}
+		else {
+			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"У вас нет доступа."), std::to_string(0)));
+		}
+
+
+		bot.interaction_response_create(
+			event.command.id,
+			event.command.token,
+			resp
+		);
+		return;
+	}
+	});
 	bot.on_guild_create([&bot](const dpp::guild_create_t& event) {
 		std::this_thread::sleep_for(std::chrono::seconds(5));
 
@@ -1257,7 +1438,7 @@ int main()
 					bot.message_delete(message_id, channel_id);
 					break;
 				}
-				if (swears.contains(normalize(word))) {
+				if (has_swear(normalize(word))) {
 					Guild& guild = fm.get_guild(guild_id);
 					User* u = guild.get_user(author_id);
 					if (guild.is_anti_swear()) {
@@ -1292,6 +1473,13 @@ int main()
 		}
 		for (auto it : g.get_users()) {
 			auto s = it.second;
+		}
+		if (author_id != bot.me.id) {
+			for (auto word : split(lmessage)) {
+				if (g.is_auto_reply_word(word, channel_id)) {
+					event.reply(g.get_auto_reply_message(word));
+				}
+			}
 		}
 
 		// TTS messages
@@ -1385,6 +1573,7 @@ int main()
 				}
 			}
 		}
+
 		if (message.substr(0, message.find(" ")) == "com_reg" && author_id == owner_id) {
 			if (message == "com_reg delete servers here") {
 				bot.guild_bulk_command_delete(guild_id);
@@ -1400,7 +1589,20 @@ int main()
 					bot.guild_bulk_command_delete(it.first);
 				}
 				event.reply("commands are deleted");
-			}
+			}else if (message == "com_reg local") {
+					if (dpp::run_once<struct cmd_reg>()) {
+
+						auto cmds = build_commands_local(bot.me.id);
+						std::string reply = "**commands registred here:**\n";
+						for (auto& cmd : cmds) {
+							std::this_thread::sleep_for(std::chrono::milliseconds(250));
+							reply = reply + cmd.name + "\n";
+							bot.guild_command_create(cmd, guild_id);
+						}
+
+						event.reply(reply);
+					}
+				}
 			else {
 				if (message == "com_reg here") {
 					if (dpp::run_once<struct cmd_reg>()) {
