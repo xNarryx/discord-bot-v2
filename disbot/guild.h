@@ -30,6 +30,7 @@ private:
     std::unordered_set<std::string> banned_words;
 	std::unordered_map<dpp::snowflake, User> users;
     std::unordered_map<std::string, AutoReplyData> auto_reply;
+    std::unordered_map<dpp::snowflake, std::deque<std::string>> chat_history;
     std::vector<lvl_role> lvl_roles;
     bool anti_swears;
 public:
@@ -41,6 +42,9 @@ public:
         std::unordered_set<std::string> banned_words = {},
         std::unordered_map<std::string, AutoReplyData> auto_reply = {},
         std::vector<lvl_role> lvl_roles = {});
+    void add_message_history(const std::string& str, dpp::snowflake channel_id);
+    std::deque<std::string> get_all_channel_history(dpp::snowflake channel_id);
+    std::unordered_map<dpp::snowflake, std::deque<std::string>> get_all_chat_history();
     void add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel);
     bool remove_auto_reply(std::string key_word);
 	void add_banned_id(dpp::snowflake banned_id);

@@ -14,6 +14,30 @@ void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowfl
 	this->lvl_roles = lvl_roles;
 }
 
+void Guild::add_message_history(const std::string& str, dpp::snowflake channel_id)
+{
+    auto& dq = chat_history[channel_id];
+
+    dq.push_front(str);
+
+    if (dq.size() > 20) {
+        dq.pop_back();
+    }
+}
+std::deque<std::string> Guild::get_all_channel_history(dpp::snowflake channel_id)
+{
+	auto it = chat_history.find(channel_id);
+
+	if (it != chat_history.end())
+		return it->second;
+
+	return {};
+}
+std::unordered_map<dpp::snowflake, std::deque<std::string>> Guild::get_all_chat_history()
+{
+	return std::unordered_map<dpp::snowflake, std::deque<std::string>>(chat_history);
+}
+
 void Guild::add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel)
 {
 	if (!auto_reply.contains(key_word)) {

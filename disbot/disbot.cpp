@@ -8,10 +8,13 @@
 #include <sstream>
 #include <iomanip>
 #include <ctime>
+#include <curl/curl.h>
+#include <regex>
 #include "FileManager.h"
 #include "guild.h"
 #include "User.h"
 #include "VoiceManager.h"
+
 
 file_manager fm;
 VoiceManager v;
@@ -147,6 +150,149 @@ std::string normalize(const std::string str) {
 	}
 	return string;
 }
+std::string extract_digits(const std::string& str)
+{
+	std::string result;
+
+	for (char c : str)
+	{
+		if (std::isdigit(static_cast<unsigned char>(c)))
+		{
+			result += c;
+		}
+	}
+
+	return result;
+}
+std::string delete_https(const std::string str) {
+	std::regex link_pattern("https?://[^\\s]+");
+	std::string cleaned = std::regex_replace(str, link_pattern, "");
+	link_pattern = ("<:?[^\\s]+");
+	cleaned = std::regex_replace(cleaned, link_pattern, "");
+	return cleaned;
+}
+std::string replace_user_id_on_it_name(const std::string str, dpp::snowflake guild_id) {
+	dpp::guild_member gm;
+	std::string name;
+	dpp::snowflake user_id;
+	std::vector<std::string> args = split(str);
+	for (auto& arg : args) {
+		if (arg.substr(0, 2) == "<@") {
+			user_id = std::stoull(extract_digits(arg));
+			gm.guild_id = guild_id;
+			gm.user_id = user_id;
+			name = gm.get_user()->username;
+			arg = name;
+		}
+	}
+	std::string result;
+	for (auto& arg : args) {
+		result += arg + " ";
+	}
+	return result;
+}
+// gemini
+static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
+{
+	((std::string*)userp)->append((char*)contents, size * nmemb);
+	return size * nmemb;
+}
+std::string ask_gemini(const std::string prompt, std::string system_promp, std::string model, std::string token)
+{
+	CURL* curl = curl_easy_init();
+	if (!curl)
+		return "Failed to init curl";
+
+	std::string response;
+	std::string system_prompt =
+		"Ты — девушка по имени Nyphomania. "
+		"у тебя есть доступ к истории местного чата для контекста "
+		"тебе не надо отвечать или говорить извинения за то что ты не овтетила "
+		"Не представляйся и не приветствуй пользователя без необходимости. "
+		"это чат где много людей, старайся быть собой "
+		"Отвечай кратко (до 150 слов). "
+		"Не повторяйся и не объясняй свою роль, если не спрашивают. "
+		"Будь пожалуйста чуть более дружелюбной, но не слишком "
+		"история чата идет сверху вниз. " + system_promp;
+	std::string api_key = token;
+
+	std::string url =
+		"https://generativelanguage.googleapis.com/v1beta/models/" +
+		model + ":generateContent?key=" + api_key;
+	
+	nlohmann::json body;
+
+	body["contents"] = {
+	{
+		{
+			"parts",
+			{
+				{{"text", system_prompt + "\n\nПользователь: " + prompt}}
+			}
+		}
+	}
+	};
+	std::cout << system_prompt << "\n\nПользователь: " << prompt << "\n";
+	std::string json_body = body.dump();
+
+	struct curl_slist* headers = nullptr;
+	headers = curl_slist_append(headers, "Content-Type: application/json");
+
+	curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_body.c_str());
+
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, &response);
+
+	CURLcode res = curl_easy_perform(curl);
+
+	curl_slist_free_all(headers);
+	curl_easy_cleanup(curl);
+
+	if (res != CURLE_OK)
+		return curl_easy_strerror(res);
+
+	return response;
+}
+std::string get_answer(const std::string prompt, std::string system_prompt, std::string token)
+{
+	std::vector<std::string> models = {
+		"gemini-3.1-flash-lite",
+		"gemini-2.5-flash-lite",
+		"gemini-2.5-flash",
+		"Gemma 4 31B"
+	};
+
+	bool has_answer = false;
+	nlohmann::json json;
+	for (auto& model : models)
+	{
+		std::string raww = ask_gemini(prompt, system_prompt, model, token);
+		json = nlohmann::json::parse(raww);
+
+		std::cout << json << std::endl;
+
+		if (json.contains("candidates") &&
+			!json["candidates"].empty())
+		{
+			has_answer = true;
+			break;
+		}
+	}
+
+	if (has_answer) {
+		if (json.contains("error"))
+			return json["error"]["message"].get<std::string>();
+
+		return json["candidates"][0]
+			["content"]["parts"][0]["text"]
+			.get<std::string>();
+	}
+
+	return "Извини, я пока не могу тебе ответить.";
+}
+
 void load_swears(const std::string& filename) {
 	std::ifstream file(filename);
 
@@ -1188,6 +1334,10 @@ int main()
 	std::ifstream filet("D:\\DEV\\Disbot\\token.txt");
 	filet >> token;
 	filet.close();
+	std::string token_gemini;
+	std::ifstream filet1("D:\\DEV\\Disbot\\token_gemini.txt");
+	filet1 >> token_gemini;
+	filet1.close();
 
 	dpp::cluster bot(token, dpp::i_default_intents | dpp::i_message_content);
 	dpp::snowflake owner_id = 879386342931451914;
@@ -1305,7 +1455,6 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
 		if (u->is_admin()) {
 			if (str == "add_reply") {
-				std::cout << "TYPETYPETYPEYPTEPTPETP\n";
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите ключевое слово в key_word."), std::to_string(0)));
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите сообщение которое надо отправлять пользователю в message."), std::to_string(1)));
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите канал в котором будет отправка сообщения пользователям в channel."), std::to_string(2)));
@@ -1319,7 +1468,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 					std::string message;
 					dpp::snowflake channel_id;
 				};
-				for (auto [key, auto_rep] : g.get_auto_reply_messages()) {
+				for (auto& [key, auto_rep] : g.get_auto_reply_messages()) {
 					size_t size = 0;
 					if (auto_rep.message.size() < 120) {
 						size = auto_rep.message.size();
@@ -1416,7 +1565,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		});
 
 
-	bot.on_message_create([&bot, owner_id](const dpp::message_create_t& event) {
+	bot.on_message_create([&bot, owner_id, token_gemini](const dpp::message_create_t& event) {
 		dpp::snowflake message_id = event.msg.id;
 		dpp::snowflake author_id = event.msg.author.id;
 		dpp::snowflake channel_id = event.msg.channel_id;
@@ -1480,6 +1629,51 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 					event.reply(g.get_auto_reply_message(word));
 				}
 			}
+		}
+		// history
+		std::string history_message =
+			delete_https(
+				replace_user_id_on_it_name(
+					"author: <@" + std::to_string(author_id) + "> " + message,
+					guild_id
+				)
+			);
+
+		if (history_message.size() > 300)
+		{
+			history_message = history_message.substr(0, 300);
+
+			size_t last_space = history_message.rfind(' ');
+
+			if (last_space != std::string::npos)
+				history_message = history_message.substr(0, last_space);
+		}
+		// gemini answer
+		if (lmessage.find("<@1276280240762523658>") != std::string::npos) {
+			std::string result;
+			for (auto& message : g.get_all_channel_history(channel_id)) {
+				result += message + "\n";
+			}
+			std::string sys_prompt = "chat history: " + result;
+			
+			std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
+			dpp::cluster* bot_ptr = &bot;
+
+			std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini]()
+				{
+					try
+					{
+						auto answer = get_answer(prompt, sys_prompt, token_gemini);
+
+						bot_ptr->message_create(
+							dpp::message(channel_id, answer)
+						);
+					}
+					catch (const std::exception& e)
+					{
+						std::cout << "AI error: " << e.what() << std::endl;
+					}
+				}).detach();
 		}
 
 		// TTS messages
@@ -1549,6 +1743,16 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		}
 
 
+		if (message == "history" && author_id == owner_id) {
+			std::string reply = "### All history here:\n";
+			for (auto& [channel, messages] : g.get_all_chat_history()) {
+				reply += "\nChannel: " + std::to_string(channel);
+				for (auto& message : messages) {
+					reply += "\n" + message;
+				}
+			}
+			event.reply(reply);
+		}
 		if (message == "save" && author_id == owner_id) {
 			if (fm.save_guilds("D:\\DEV\\Disbot\\tests\\")) {
 				event.reply(to_utf8(L"Успешно сохранила дату."));

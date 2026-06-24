@@ -68,7 +68,7 @@ bool file_manager::save_guilds(const std::string& folder_path)
         std::string path = folder_path + std::to_string(gid) + ".json";
         std::ofstream file(path);
 
-        if (!file.is_open() || gid == 0) {
+        if (!file.is_open()) {
             std::cout << "Cannot open file skipping: " << path << "\n";
         }
 
@@ -109,20 +109,24 @@ bool file_manager::load_guilds(const std::string& folder_path)
                 file.close();
             }
             
-
-            if (gid != 0) {
-                std::cout << " status: ";
-                guilds[gid] = Guild::from_json(j);
-                SetColorr(2);
-                std::cout << "Sucessfuly";
-                SetColorr();
-                std::cout << " Guild_id: " << gid << "\n";
+            try {
+                if (true) {
+                    std::cout << " status: ";
+                    guilds[gid] = Guild::from_json(j);
+                    SetColorr(2);
+                    std::cout << "Sucessfuly";
+                    SetColorr();
+                    std::cout << " Guild_id: " << gid << "\n";
+                }
+                else {
+                    std::cout << " status: ";
+                    SetColorr(4);
+                    std::cout << "Failed\n";
+                    SetColorr();
+                }
             }
-            else {
-                std::cout << " status: ";
-                SetColorr(4);
-                std::cout << "Failed\n";
-                SetColorr();
+            catch (...) {
+                std::cout << "Failed\n"; std::cout << "Failed\n"; std::cout << "Failed\n";
             }
             
         }
