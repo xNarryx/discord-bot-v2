@@ -177,12 +177,20 @@ std::string replace_user_id_on_it_name(const std::string str, dpp::snowflake gui
 	dpp::snowflake user_id;
 	std::vector<std::string> args = split(str);
 	for (auto& arg : args) {
-		if (arg.substr(0, 2) == "<@") {
-			user_id = std::stoull(extract_digits(arg));
-			gm.guild_id = guild_id;
-			gm.user_id = user_id;
-			name = gm.get_user()->username;
-			arg = name;
+		try {
+			if (arg.substr(0, 2) == "<@") {
+				user_id = std::stoull(extract_digits(arg));
+				gm.guild_id = guild_id;
+				gm.user_id = user_id;
+				if (auto* user = gm.get_user())
+				{
+					name = user->username;
+					arg = name;
+				}
+			}
+		}
+		catch (...) {
+
 		}
 	}
 	std::string result;
@@ -777,6 +785,41 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	);
 	cmds.push_back(report_issue);
 #pragma endregion
+#pragma region AI_answers
+	dpp::slashcommand ai_answers(
+		"ai_answers",
+		to_utf8(L"Редактировать память, и добавить базовый промпт для канала"),
+		bot_id
+	);
+	ai_answers.add_option(
+		dpp::command_option(
+			dpp::co_string,@ra
+			"type",
+			to_utf8(L"Выберите действие"),
+			true
+		)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Очистить память"), "clear_memory"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить базовый промпт для канала"), "add_base_prompt"))
+	);
+	ai_answers.add_option(
+		dpp::command_option(
+			dpp::co_string,
+			"text",
+			to_utf8(L"Текст для базового промпта  \"-\" - для очистки промпта"),
+			false
+		)
+	);
+	ai_answers.add_option(
+		dpp::command_option(
+			dpp::co_channel,
+			"channel",
+			to_utf8(L"канал для промпта"),
+			false
+		)
+	);
+
+	cmds.push_back(ai_answers);
+#pragma endregion
 	return cmds;
 }
 std::vector<dpp::slashcommand> build_commands_local(dpp::snowflake bot_id) { // commands for local use
@@ -844,6 +887,59 @@ void load_commads(dpp::cluster& bot) {
 					bot.message_create(dpp::message(event.command.channel_id, text));
 				}
 			
+		}
+		else {
+			event.reply(
+				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
+			);
+		}
+		};
+
+	handlers_cmd["ai_answers"] = [&](const dpp::slashcommand_t& event) {
+		std::string text = " ";
+		dpp::snowflake channel;
+		Guild gl;
+		gl = fm.get_guild_r(event.command.guild_id);
+		User* uu = gl.get_user(event.command.usr.id);
+		if (uu->is_admin()) {
+			auto param = event.get_parameter("text");
+			if (param.index() != 0) {
+				text = std::get<std::string>(event.get_parameter("text"));
+			}
+			param = event.get_parameter("channel");
+			if (param.index() != 0) {
+				channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
+			}
+			else {
+				channel = event.command.channel_id;
+			}
+
+			auto type = std::get<std::string>(event.get_parameter("type"));
+			if (type == "clear_memory") {
+				Guild& g = fm.get_guild(event.command.guild_id);
+				if (g.clean_channel_history(event.command.channel_id)) {
+					event.reply(
+						dpp::message(to_utf8(L"Удалила память канала.")).set_flags(dpp::m_ephemeral)
+					);
+				}
+				
+			} if (type == "add_base_prompt") {
+				Guild& g = fm.get_guild(event.command.guild_id);
+				if (g.get_channel_server_prompt(channel) != "") {
+					g.add_channel_server_prompt(text, channel);
+					event.reply(
+						dpp::message(to_utf8(L"Изменила базовый промпт.")).set_flags(dpp::m_ephemeral)
+					);
+				}
+				else {
+					g.add_channel_server_prompt(text, channel);
+					event.reply(
+						dpp::message(to_utf8(L"Добавила базовый промпт.")).set_flags(dpp::m_ephemeral)
+					);
+				}
+			}
+
+
 		}
 		else {
 			event.reply(
@@ -1684,14 +1780,15 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 
 			if (last_space != std::string::npos)
 				history_message = history_message.substr(0, last_space);
+			
 		}
+		g.add_message_history(history_message, channel_id);
 		// gemini answers
 		bot.message_get(event.msg.message_reference.message_id,
 			event.msg.message_reference.channel_id,
 			[&bot, channel_id, token_gemini, message, guild_id, &g]
 			(const dpp::confirmation_callback_t& cc)
 			{
-				std::cout << message << "\n";
 				try {
 					dpp::message msg = std::get<dpp::message>(cc.value);
 
@@ -1702,7 +1799,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 					for (auto& m : g.get_all_channel_history(channel_id))
 						result += m + "\n";
 
-					std::string sys_prompt = "chat history: " + result;
+					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + " chat history: " + result;
 
 					std::string prompt =
 						"ответил на ваше сообщение Nyphomania:" + msg.content +
@@ -1723,14 +1820,12 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 					std::cout << "message_get failed\n";
 				}
 			});
-		
-		
-		if (lmessage.find("<@1276280240762523658>") != std::string::npos || message.find("нимф") != std::string::npos) {
+		if (lmessage.find("<@1276280240762523658>") != std::string::npos || lmessage.find("нимф") != std::string::npos) {
 			std::string result;
 			for (auto& message : g.get_all_channel_history(channel_id)) {
 				result += message + "\n";
 			}
-			std::string sys_prompt = "chat history: " + result;
+			std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
 			
 			std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
 			dpp::cluster* bot_ptr = &bot;
@@ -1844,7 +1939,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			std::string reply = "### All history here:\n";
 			for (auto& [channel, messages] : g.get_all_chat_history()) {
 				reply += "\nChannel: " + std::to_string(channel);
-				for (auto& message : messages) {
+				for (auto& message : messages.chat_history) {
 					reply += "\n" + message;
 				}
 			}

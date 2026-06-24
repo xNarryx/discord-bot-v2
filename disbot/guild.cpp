@@ -16,7 +16,7 @@ void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowfl
 
 void Guild::add_message_history(const std::string& str, dpp::snowflake channel_id)
 {
-    auto& dq = chat_history[channel_id];
+    auto& dq = chat_history[channel_id].chat_history;
 
     dq.push_front(str);
 
@@ -27,15 +27,46 @@ void Guild::add_message_history(const std::string& str, dpp::snowflake channel_i
 std::deque<std::string> Guild::get_all_channel_history(dpp::snowflake channel_id)
 {
 	auto it = chat_history.find(channel_id);
-
+	
 	if (it != chat_history.end())
-		return it->second;
+		return it->second.chat_history;
 
 	return {};
 }
-std::unordered_map<dpp::snowflake, std::deque<std::string>> Guild::get_all_chat_history()
+std::unordered_map<dpp::snowflake, AI_reply>  Guild::get_all_chat_history()
 {
-	return std::unordered_map<dpp::snowflake, std::deque<std::string>>(chat_history);
+	return std::unordered_map<dpp::snowflake, AI_reply>(chat_history);
+}
+
+void Guild::add_channel_server_prompt(std::string str, dpp::snowflake channel_id)
+{
+	if (str == "-") {
+		str = "";
+	}
+	chat_history[channel_id].server_prompt = str;
+}
+
+std::string Guild::get_channel_server_prompt(dpp::snowflake channel_id)
+{
+	if (chat_history.contains(channel_id)) {
+		return chat_history[channel_id].server_prompt;
+	}
+	return std::string("");
+}
+
+bool Guild::clean_chat_history()
+{
+	chat_history.clear();
+	return true;
+}
+
+bool Guild::clean_channel_history(dpp::snowflake channel_id)
+{
+	if (chat_history.contains(channel_id)) {
+		chat_history[channel_id].chat_history.clear();
+		return true;
+	}
+	return false;
 }
 
 void Guild::add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel)

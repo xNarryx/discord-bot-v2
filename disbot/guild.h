@@ -19,6 +19,10 @@ struct AutoReplyData
     std::string message;
     dpp::snowflake channel_id;
 };
+struct AI_reply {
+    std::deque<std::string> chat_history;
+    std::string server_prompt;
+};
 
 class Guild {
 private:
@@ -30,7 +34,7 @@ private:
     std::unordered_set<std::string> banned_words;
 	std::unordered_map<dpp::snowflake, User> users;
     std::unordered_map<std::string, AutoReplyData> auto_reply;
-    std::unordered_map<dpp::snowflake, std::deque<std::string>> chat_history;
+    std::unordered_map<dpp::snowflake, AI_reply> chat_history;
     std::vector<lvl_role> lvl_roles;
     bool anti_swears;
 public:
@@ -44,7 +48,11 @@ public:
         std::vector<lvl_role> lvl_roles = {});
     void add_message_history(const std::string& str, dpp::snowflake channel_id);
     std::deque<std::string> get_all_channel_history(dpp::snowflake channel_id);
-    std::unordered_map<dpp::snowflake, std::deque<std::string>> get_all_chat_history();
+    std::unordered_map<dpp::snowflake, AI_reply>  get_all_chat_history();
+    void add_channel_server_prompt(std::string str, dpp::snowflake channel_id);
+    std::string get_channel_server_prompt(dpp::snowflake channel_id);
+    bool clean_chat_history();
+    bool clean_channel_history(dpp::snowflake channel_id);
     void add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel);
     bool remove_auto_reply(std::string key_word);
 	void add_banned_id(dpp::snowflake banned_id);
@@ -126,8 +134,20 @@ public:
                 {"channel_id", static_cast<uint64_t>(data.channel_id)}
             };
         }
-
         j["auto_reply"] = auto_reply_json;
+
+        nlohmann::json chat_history_json;
+
+        for (const auto& [user_id, data] : chat_history)
+        {
+            chat_history_json[std::to_string(user_id)] =
+            {
+                {"server_prompt", data.server_prompt},
+                {"chat_history", data.chat_history}
+            };
+        }
+
+        j["chat_history"] = chat_history_json;
 
         // banned_words
         j["banned_words"] = nlohmann::json::array();
@@ -188,6 +208,29 @@ public:
                 data.channel_id = it.value().value("channel_id", 0ULL);
 
                 g.auto_reply[it.key()] = data;
+            }
+        }
+
+        // chat_history
+        if (j.contains("chat_history") && j["chat_history"].is_object())
+        {
+            for (auto it = j["chat_history"].begin();
+                it != j["chat_history"].end();
+                ++it)
+            {
+                AI_reply data;
+
+                data.server_prompt =
+                    it.value().value("server_prompt", "");
+
+                if (it.value().contains("chat_history"))
+                {
+                    data.chat_history =
+                        it.value()["chat_history"]
+                        .get<std::deque<std::string>>();
+                }
+
+                g.chat_history[std::stoull(it.key())] = std::move(data);
             }
         }
 
