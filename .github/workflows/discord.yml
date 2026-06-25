@@ -1,0 +1,48 @@
+name: Discord Notifications
+
+on:
+  push:
+    branches:
+      - "**"
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Send Discord message
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: |
+          COMMIT_MSG=$(git log -1 --pretty=%B "${{ github.sha }}")
+
+          curl \
+            -H "Content-Type: application/json" \
+            -X POST \
+            -d "{
+              \"embeds\": [{
+                \"title\": \"🚀 Новый коммит\",
+                \"color\": 3447003,
+                \"fields\": [
+                  {
+                    \"name\": \"Репозиторий\",
+                    \"value\": \"${{ github.repository }}\"
+                  },
+                  {
+                    \"name\": \"Автор\",
+                    \"value\": \"${{ github.actor }}\"
+                  },
+                  {
+                    \"name\": \"Ветка\",
+                    \"value\": \"${{ github.ref_name }}\"
+                  },
+                  {
+                    \"name\": \"Сообщение\",
+                    \"value\": \"$COMMIT_MSG\"
+                  }
+                ],
+                \"url\": \"${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}\",
+                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"
+              }]
+            }" \
+            "$WEBHOOK"

@@ -220,8 +220,8 @@ std::string ask_gemini(const std::string prompt, std::string system_promp, std::
 		"это чат где много людей, старайся быть собой "
 		"Отвечай кратко (до 150 слов). "
 		"Не повторяйся и не объясняй свою роль, если не спрашивают. "
-		"Будь пожалуйста чуть более дружелюбной, но не слишком "
-		"история чата идет сверху вниз. " + system_promp;
+		"Будь пожалуйста чуть дружелюбной, но не слишком, не оскорбляй всех без причины, старайся поддержать дружелюбность "
+		"история чата идет сверху вниз, старайся запоминать кто что написал, но не упоминать это в каждом ответе. " + system_promp;
 	std::string api_key = token;
 
 	std::string url =
@@ -235,7 +235,7 @@ std::string ask_gemini(const std::string prompt, std::string system_promp, std::
 		{
 			"parts",
 			{
-				{{"text", system_prompt + "\n\nПользователь: " + prompt}}
+				{{"text", system_prompt + prompt}}
 			}
 		}
 	}
@@ -793,7 +793,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	);
 	ai_answers.add_option(
 		dpp::command_option(
-			dpp::co_string,@ra
+			dpp::co_string,
 			"type",
 			to_utf8(L"Выберите действие"),
 			true
@@ -917,7 +917,7 @@ void load_commads(dpp::cluster& bot) {
 			auto type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "clear_memory") {
 				Guild& g = fm.get_guild(event.command.guild_id);
-				if (g.clean_channel_history(event.command.channel_id)) {
+				if (g.clean_channel_history(channel)) {
 					event.reply(
 						dpp::message(to_utf8(L"Удалила память канала.")).set_flags(dpp::m_ephemeral)
 					);
@@ -1767,7 +1767,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		std::string history_message =
 			delete_https(
 				replace_user_id_on_it_name(
-					"author: <@" + std::to_string(author_id) + "> " + message,
+					"author <@" + std::to_string(author_id) + ">: " + message,
 					guild_id
 				)
 			);
@@ -1786,7 +1786,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		// gemini answers
 		bot.message_get(event.msg.message_reference.message_id,
 			event.msg.message_reference.channel_id,
-			[&bot, channel_id, token_gemini, message, guild_id, &g]
+			[&bot, channel_id, token_gemini, message, guild_id, &g, author_id]
 			(const dpp::confirmation_callback_t& cc)
 			{
 				try {
@@ -1808,7 +1808,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 
 				
 							try {
-								auto answer = get_answer(prompt, sys_prompt, token_gemini);
+								auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@"+ std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
 
 								bot.message_create(dpp::message(channel_id, answer));
 							}
@@ -1830,11 +1830,11 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
 			dpp::cluster* bot_ptr = &bot;
 
-			std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini]()
+			std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id , guild_id]()
 				{
 					try
 					{
-						auto answer = get_answer(prompt, sys_prompt, token_gemini);
+						auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
 
 						bot_ptr->message_create(
 							dpp::message(channel_id, answer)
