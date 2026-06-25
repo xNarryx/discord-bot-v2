@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-  	- name: Checkout repository
-    	uses: actions/checkout@v4
-    	with:
-      		fetch-depth: 1
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
 
       - name: Send Discord message
         env:
@@ -21,7 +21,7 @@ jobs:
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%B)
 
-          # экранируем переносы строк, чтобы JSON не ломался
+          # экранируем переносы строк
           COMMIT_MSG=$(echo "$COMMIT_MSG" | sed ':a;N;$!ba;s/\n/\\n/g')
 
           curl \
