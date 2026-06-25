@@ -10,11 +10,18 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        fetch-depth: 1
+
       - name: Send Discord message
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B "${{ github.sha }}")
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+
+          # экранируем переносы строк, чтобы JSON не ломался
+          COMMIT_MSG=$(echo "$COMMIT_MSG" | sed ':a;N;$!ba;s/\n/\\n/g')
 
           curl \
             -H "Content-Type: application/json" \
@@ -42,7 +49,7 @@ jobs:
                   }
                 ],
                 \"url\": \"${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}\",
-                \"timestamp\": \"$(date -u +"%Y-%m-%dT%H:%M:%SZ")\"
+                \"timestamp\": \"$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")\"
               }]
             }" \
             "$WEBHOOK"
