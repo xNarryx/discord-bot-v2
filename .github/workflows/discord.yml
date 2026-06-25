@@ -10,11 +10,15 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
       - name: Send Discord message
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
-          COMMIT_MSG=$(git log -1 --pretty=%B)
+          # берём сообщение коммита напрямую от GitHub (без git)
+          COMMIT_MSG="${{ github.event.head_commit.message }}"
 
           jq -n \
             --arg repo "${{ github.repository }}" \
