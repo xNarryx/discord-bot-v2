@@ -10,47 +10,33 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 1
-
       - name: Send Discord message
         env:
           WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
         run: |
           COMMIT_MSG=$(git log -1 --pretty=%B)
 
-          # экранируем переносы строк
-          COMMIT_MSG=$(echo "$COMMIT_MSG" | sed ':a;N;$!ba;s/\n/\\n/g')
-
-          curl \
-            -H "Content-Type: application/json" \
-            -X POST \
-            -d "{
-              \"embeds\": [{
-                \"title\": \"🚀 Новый коммит\",
-                \"color\": 3447003,
-                \"fields\": [
-                  {
-                    \"name\": \"Репозиторий\",
-                    \"value\": \"${{ github.repository }}\"
-                  },
-                  {
-                    \"name\": \"Автор\",
-                    \"value\": \"${{ github.actor }}\"
-                  },
-                  {
-                    \"name\": \"Ветка\",
-                    \"value\": \"${{ github.ref_name }}\"
-                  },
-                  {
-                    \"name\": \"Сообщение\",
-                    \"value\": \"$COMMIT_MSG\"
-                  }
+          jq -n \
+            --arg repo "${{ github.repository }}" \
+            --arg actor "${{ github.actor }}" \
+            --arg branch "${{ github.ref_name }}" \
+            --arg msg "$COMMIT_MSG" \
+            --arg url "${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}" \
+            --arg time "$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
+            '{
+              embeds: [{
+                title: "🚀 Новый коммит",
+                color: 3447003,
+                fields: [
+                  {name: "Репозиторий", value: $repo},
+                  {name: "Автор", value: $actor},
+                  {name: "Ветка", value: $branch},
+                  {name: "Сообщение", value: $msg}
                 ],
-                \"url\": \"${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }}\",
-                \"timestamp\": \"$(date -u +\"%Y-%m-%dT%H:%M:%SZ\")\"
+                url: $url,
+                timestamp: $time
               }]
-            }" \
-            "$WEBHOOK"
+            }' | curl -H "Content-Type: application/json" \
+                 -X POST \
+                 -d @- \
+                 "$WEBHOOK"
