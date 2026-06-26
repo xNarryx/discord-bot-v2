@@ -632,6 +632,15 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		)
 
 	);
+	warn.add_option(
+		dpp::command_option(
+			dpp::co_boolean,
+			"ping_user",
+			to_utf8(L"Уведомить пользователя об этом?"),
+			true
+		)
+
+	);
 	cmds.push_back(warn);
 #pragma endregion
 #pragma region Warn_check
@@ -1200,15 +1209,25 @@ void load_commads(dpp::cluster& bot) {
 		if (uu->is_admin()) {
 			std::string text = std::get<std::string>(event.get_parameter("reason"));
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
+			bool messaged = std::get<bool>(event.get_parameter("ping_user"));
 			Guild& g = fm.get_guild(event.command.guild_id);
 			User* u;
 			u = g.get_user(user_id);
 			u->add_warn(text);
-			std::string name = event.command.guild_id.str();
-			auto guild = event.command.get_guild();
-			std::string reply = to_utf8(L"# Вы получили варн на сервере: ") + guild.name + to_utf8(L"\n С причиной: ") + text + to_utf8(L"\n\n  **Постарайтесь больше не нарушать правила сервера!**");
-			bot.direct_message_create(user_id, dpp::message(reply));
-			event.reply(to_utf8(L"**Пользователь получил предупреждение!**"));
+			if (messaged) {
+				std::string name = event.command.guild_id.str();
+				auto guild = event.command.get_guild();
+				std::string reply = to_utf8(L"# Вы получили варн на сервере: ") + guild.name + to_utf8(L"\n С причиной: ") + text;
+				bot.direct_message_create(user_id, dpp::message(reply));
+				event.reply(
+					dpp::message(to_utf8(L"**Пользователь получил предупреждение с уведомлением!**")).set_flags(dpp::m_ephemeral)
+				);
+			}
+			else {
+				event.reply(
+					dpp::message(to_utf8(L"**Пользователь получил предупреждение без уведомления!**")).set_flags(dpp::m_ephemeral)
+				);
+			}
 		}
 		else {
 			event.reply(
@@ -2057,13 +2076,31 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 			if (dpp::run_once<struct cmd_reg>()) {
 
 				auto cmds = build_commands(bot.me.id);
-				std::string reply = "**commands registred here:**\n";
+				std::string reply = "**commands registred:**\n";
 					for (auto& cmd : cmds) {
 						reply = reply + cmd.name + "\n";
 						std::this_thread::sleep_for(std::chrono::milliseconds(1000));
 						bot.global_command_create(cmd);
 					}
 				
+				event.reply(reply);
+			}
+		}
+		if (message.substr(0, message.find(" ")) == "global_update_that" && author_id == owner_id) {
+			if (dpp::run_once<struct cmd_reg>()) {
+				std::vector<std::string> splited = split(message);
+				auto cmds = build_commands(bot.me.id);
+				std::string reply = "**commands updated:**\n";
+				for (auto& cmd : cmds) {
+					for (auto& splt : splited) {
+						if (cmd.name == splt) {
+							reply = reply + cmd.name + "\n";
+							std::this_thread::sleep_for(std::chrono::milliseconds(1000));
+							bot.global_command_create(cmd);
+						}
+					}
+				}
+
 				event.reply(reply);
 			}
 		}
