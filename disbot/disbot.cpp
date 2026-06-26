@@ -1801,32 +1801,15 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 				}
 			}
 		}
-		// history
-		std::string history_message =
-			delete_https(
-				replace_user_id_on_it_name(
-					"author <@" + std::to_string(author_id) + ">: " + message,
-					guild_id
-				)
-			);
-
-		if (history_message.size() > 300)
-		{
-			history_message = history_message.substr(0, 300);
-
-			size_t last_space = history_message.rfind(' ');
-
-			if (last_space != std::string::npos)
-				history_message = history_message.substr(0, last_space);
-			
-		}
-		g.add_message_history(history_message, channel_id);
+		
 		// gemini answers
+		bool answered = false;
 		bot.message_get(event.msg.message_reference.message_id,
 			event.msg.message_reference.channel_id,
-			[&bot, channel_id, token_gemini, message, guild_id, &g, author_id]
+			[&bot, channel_id, token_gemini, message, guild_id, &g, author_id, &answered]
 			(const dpp::confirmation_callback_t& cc)
 			{
+				
 				try {
 					dpp::message msg = std::get<dpp::message>(cc.value);
 
@@ -1844,46 +1827,72 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 						" Пользователь написал: " +
 						delete_https(replace_user_id_on_it_name(message, guild_id));
 
-				
-							try {
-								auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@"+ std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
+					if (!answered) {
+						answered = true;
+						try {
+							auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
 
-								bot.message_create(dpp::message(channel_id, answer));
-							}
-							catch (const std::exception& e) {
-								std::cout << "AI error: " << e.what() << std::endl;
-							}
+							bot.message_create(dpp::message(channel_id, answer));
+
+						}
+						catch (const std::exception& e) {
+							std::cout << "AI error: " << e.what() << std::endl;
+						}
+					}
 				}
 				catch (...) {
 					std::cout << "message_get failed\n";
 				}
 			});
 		if (lmessage.find("<@1276280240762523658>") != std::string::npos || lmessage.find("нимф") != std::string::npos) {
-			std::string result;
-			for (auto& message : g.get_all_channel_history(channel_id)) {
-				result += message + "\n";
+			if (!answered) {
+				std::string result;
+				for (auto& message : g.get_all_channel_history(channel_id)) {
+					result += message + "\n";
+				}
+				std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
+
+				std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
+				dpp::cluster* bot_ptr = &bot;
+				answered = true;
+				std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id, guild_id]()
+					{
+						try
+						{
+							auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
+
+							bot_ptr->message_create(
+								dpp::message(channel_id, answer)
+							);
+						}
+						catch (const std::exception& e)
+						{
+							std::cout << "AI error: " << e.what() << std::endl;
+						}
+					}).detach();
 			}
-			std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
-			
-			std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
-			dpp::cluster* bot_ptr = &bot;
-
-			std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id , guild_id]()
-				{
-					try
-					{
-						auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
-
-						bot_ptr->message_create(
-							dpp::message(channel_id, answer)
-						);
-					}
-					catch (const std::exception& e)
-					{
-						std::cout << "AI error: " << e.what() << std::endl;
-					}
-				}).detach();
 		}
+
+		// history
+		std::string history_message =
+			delete_https(
+				replace_user_id_on_it_name(
+					"author <@" + std::to_string(author_id) + ">: " + message,
+					guild_id
+				)
+			);
+
+		if (history_message.size() > 300)
+		{
+			history_message = history_message.substr(0, 300);
+
+			size_t last_space = history_message.rfind(' ');
+
+			if (last_space != std::string::npos)
+				history_message = history_message.substr(0, last_space);
+
+		}
+		g.add_message_history(history_message, channel_id);
 
 		// TTS messages
 		User* u = g.get_user(author_id);
