@@ -28,6 +28,8 @@ public:
     Guild& get_guild_r(const dpp::snowflake& guild_id);
     bool find_guild(dpp::snowflake& guild_id);
 
+    bool delete_guild_for_now(dpp::snowflake& guild_id);
+    bool delete_guild(dpp::snowflake& guild_id, const std::string& folder_path);
     bool save_guilds(const std::string& folder_path);
     bool load_guilds(const std::string& folder_path);
 };

@@ -59,6 +59,37 @@ bool file_manager::find_guild(dpp::snowflake& guild_id)
     return guilds.contains(guild_id);
 }
 
+bool file_manager::delete_guild_for_now(dpp::snowflake& guild_id)
+{
+    std::shared_lock lock(guilds_mutex);
+
+    if (guilds.contains(guild_id)) {
+        guilds.erase(guild_id);
+        return true;
+    }
+    else {
+        return false;
+    }
+}
+
+bool file_manager::delete_guild(dpp::snowflake& guild_id, const std::string& folder_path)
+{
+    std::shared_lock lock(guilds_mutex);
+    if (guilds.contains(guild_id)) {
+        guilds.erase(guild_id);
+        if (std::filesystem::remove(folder_path + std::to_string(guild_id) + ".json")) {
+            std::cout << "Файл удалён\n";
+            return true;
+        }
+        else {
+            std::cout << "Файл не найден или не удалён\n";
+            return false;
+        }
+        
+    }
+    return false;
+}
+
 bool file_manager::save_guilds(const std::string& folder_path)
 {
     std::shared_lock lock(guilds_mutex);

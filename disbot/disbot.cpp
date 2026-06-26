@@ -322,16 +322,29 @@ void bot_thread(dpp::cluster& bot){
 			std::this_thread::sleep_for(std::chrono::seconds(15));
 			for (auto& [it, g] : fm.get_guilds()) {
 				if (g.get_id() != 0) {
-					dpp::guild* g_l = dpp::find_guild(g.get_id());
-					for (auto& [user_id, state] : g_l->voice_members) {
-						if (!state.is_self_mute()) {
-							auto* u = g.get_user(user_id);
-							u->Add_exp_voice(1);
+					try {
+						if (dpp::find_guild(g.get_id())) {
+							dpp::guild* g_l = dpp::find_guild(g.get_id());
+
+
+							for (auto& [user_id, state] : g_l->voice_members) {
+								if (!state.is_self_mute()) {
+									auto* u = g.get_user(user_id);
+									u->Add_exp_voice(1);
+								}
+								else {
+									auto* u = g.get_user(user_id);
+									u->Add_time_muted(1);
+								}
+							}
 						}
-						else {
-							auto* u = g.get_user(user_id);
-							u->Add_time_muted(1);
-						}
+					}
+					catch (...) {
+						SetColor(12);
+						dpp::snowflake id = g.get_id();
+						std::cout << "Невозможно проверить гильдию. Возможен кик. Удаляю из сохранения временно гильдию: " << id;
+						SetColor();
+						fm.delete_guild_for_now(id);
 					}
 				}
 			}
@@ -364,56 +377,67 @@ void bot_thread_exp_lvls(dpp::cluster& bot) {
 			Guild g;
 			User u;
 			for (auto& [guild_id, g] : fm.get_guilds_r()) {
-				for (auto& [user_id , u] : g.get_users()) {
-					for (auto& role : g.get_lvl_roles()) {
-						if (!u.has_role(role.id_role)) {
-							if (role.type == "exp_text") {
-								if (u.get_user_exp_text() >= role.xp_role) {
-									bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-									Guild& gl = fm.get_guild(guild_id);
-									User* us = gl.get_user(user_id);
-									us->add_role(role.id_role);
-									SetColor(6);
-									std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-									SetColor();
-								}
-							}
-							else if (role.type == "exp_voice") {
-								if (u.get_user_exp_voice() >= role.xp_role) {
-									bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-									Guild& gl = fm.get_guild(guild_id);
-									User* us = gl.get_user(user_id);
-									us->add_role(role.id_role);
-									SetColor(6);
-									std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-									SetColor();
-								}
-							}
-							else if (role.type == "exp_muted") {
-								if (u.get_time_muted() >= role.xp_role) {
-									bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-									Guild& gl = fm.get_guild(guild_id);
-									User* us = gl.get_user(user_id);
-									us->add_role(role.id_role);
-									SetColor(6);
-									std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-									SetColor();
-								}
-							}
-							else if (role.type == "exp_all") {
-								int all_exp = u.get_time_muted() + u.get_user_exp_text() + u.get_user_exp_voice();
-								if (all_exp >= role.xp_role) {
-									bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-									Guild& gl = fm.get_guild(guild_id);
-									User* us = gl.get_user(user_id);
-									us->add_role(role.id_role);
-									SetColor(6);
-									std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-									SetColor();
+				try {
+					if (dpp::guild* g_l = dpp::find_guild(g.get_id())) {
+						for (auto& [user_id, u] : g.get_users()) {
+							for (auto& role : g.get_lvl_roles()) {
+								if (!u.has_role(role.id_role)) {
+									if (role.type == "exp_text") {
+										if (u.get_user_exp_text() >= role.xp_role) {
+											bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
+											Guild& gl = fm.get_guild(guild_id);
+											User* us = gl.get_user(user_id);
+											us->add_role(role.id_role);
+											SetColor(6);
+											std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
+											SetColor();
+										}
+									}
+									else if (role.type == "exp_voice") {
+										if (u.get_user_exp_voice() >= role.xp_role) {
+											bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
+											Guild& gl = fm.get_guild(guild_id);
+											User* us = gl.get_user(user_id);
+											us->add_role(role.id_role);
+											SetColor(6);
+											std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
+											SetColor();
+										}
+									}
+									else if (role.type == "exp_muted") {
+										if (u.get_time_muted() >= role.xp_role) {
+											bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
+											Guild& gl = fm.get_guild(guild_id);
+											User* us = gl.get_user(user_id);
+											us->add_role(role.id_role);
+											SetColor(6);
+											std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
+											SetColor();
+										}
+									}
+									else if (role.type == "exp_all") {
+										int all_exp = u.get_time_muted() + u.get_user_exp_text() + u.get_user_exp_voice();
+										if (all_exp >= role.xp_role) {
+											bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
+											Guild& gl = fm.get_guild(guild_id);
+											User* us = gl.get_user(user_id);
+											us->add_role(role.id_role);
+											SetColor(6);
+											std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
+											SetColor();
+										}
+									}
 								}
 							}
 						}
 					}
+				}
+				catch (...) {
+					SetColor(12);
+					dpp::snowflake id = g.get_id();
+					std::cout << "Невозможно проверить гильдию. Удаляю из сохранения временно гильдию: " << id;
+					SetColor();
+					fm.delete_guild_for_now(id);
 				}
 			}
 		}
@@ -1624,7 +1648,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 	});
 	bot.on_guild_create([&bot](const dpp::guild_create_t& event) {
 		std::this_thread::sleep_for(std::chrono::seconds(5));
-
+		
 		dpp::guild g = event.created;
 		if (!fm.find_guild(g.id)) {
 			if (dpp::run_once<struct cmd_reg>()) {
@@ -2041,6 +2065,16 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 					}
 				
 				event.reply(reply);
+			}
+		}
+		if (message.substr(0, message.find(" ")) == "guild_delete" && author_id == owner_id) {
+			std::vector<std::string> splited = split(message);
+			dpp::snowflake arg = std::stoull(splited[1]);
+			if (fm.delete_guild(arg, "D:\\DEV\\Disbot\\tests\\")) {
+				event.reply("Гильдия удалена!");
+			}
+			else {
+				event.reply("Не получилось удалить гильдию!");
 			}
 		}
 		if (lmessage.substr(0, message.find(" ")) == "guild_name" && author_id == owner_id) {
