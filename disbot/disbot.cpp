@@ -1670,12 +1670,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 		
 		dpp::guild g = event.created;
 		if (!fm.find_guild(g.id)) {
-			if (dpp::run_once<struct cmd_reg>()) {
-				/*auto cmds = build_commands(bot.me.id);
-				for (auto& cmd : cmds) {
-					std::this_thread::sleep_for(std::chrono::milliseconds(250));
-					bot.guild_command_create(cmd, g.id);
-				}*/
+			
 				Guild gl = fm.get_guild(g.id);
 				User u;
 				u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
@@ -1685,7 +1680,7 @@ bot.on_autocomplete([&](const dpp::autocomplete_t& event) {
 				std::cout << "Bot joined guild: "
 					<< g.name << " (" << g.id << ")\n";
 				SetColor(7);
-			}
+			
 		}
 
 		});
