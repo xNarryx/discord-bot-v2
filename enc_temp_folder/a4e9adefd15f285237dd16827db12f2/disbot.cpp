@@ -1870,6 +1870,7 @@ int main()
 							dpp::message msg(channel_id, "Вот твоя озвучка!");
 							std::string path = v.tts_create(reply, u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\", text);
 							std::string ext = path.substr(path.find("."));
+							std::cout << ext << "\n";
 							msg.add_file("озвучкански"+ext, dpp::utility::read_file(path));
 							bot.message_create(msg);
 							return;
@@ -1913,6 +1914,7 @@ int main()
 						dpp::message msg(channel_id, "Вот твоя озвучка!");
 						std::string path = v.tts_create(reply, u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\", text);
 						std::string ext = path.substr(path.find("."));
+						std::cout << ext << "\n";
 						msg.add_file("озвучкански" + ext, dpp::utility::read_file(path));
 						bot.message_create(msg);
 						return;

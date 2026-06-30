@@ -16,9 +16,12 @@ class file_manager {
 private:
     std::unordered_map<dpp::snowflake, Guild> guilds;
     mutable std::shared_mutex guilds_mutex;
+    std::unordered_map <std::string, std::string> api_keys;
 
 public:
-
+    void load_api_keys(const std::string path);
+    std::string get_api_key(const std::string api);
+    std::unordered_map <std::string, std::string> get_all_api_keys();
     void add_guild(const Guild& g);
 
 

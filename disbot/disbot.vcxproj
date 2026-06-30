@@ -136,8 +136,10 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="Base64.cpp" />
     <ClCompile Include="disbot.cpp" />
     <ClCompile Include="FileManager.cpp" />
+    <ClCompile Include="GeminiAudio.cpp" />
     <ClCompile Include="guild.cpp">
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">false</ExcludedFromBuild>
       <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Release|Win32'">false</ExcludedFromBuild>
@@ -146,12 +148,17 @@
     </ClCompile>
     <ClCompile Include="User.cpp" />
     <ClCompile Include="VoiceManager.cpp" />
+    <ClCompile Include="WavWriter.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AudioData.h" />
+    <ClInclude Include="Base64.h" />
     <ClInclude Include="FileManager.h" />
+    <ClInclude Include="GeminiAudio.h" />
     <ClInclude Include="guild.h" />
     <ClInclude Include="User.h" />
     <ClInclude Include="VoiceManager.h" />
+    <ClInclude Include="WavWriter.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

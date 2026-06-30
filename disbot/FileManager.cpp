@@ -8,6 +8,53 @@ void SetColorr(int color = 7) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
 }
 
+void file_manager::load_api_keys(const std::string path)
+{
+    std::shared_lock lock(guilds_mutex);
+    std::ifstream file(path);
+    nlohmann::json j;
+    file >> j;
+    file.close();
+    for (const auto& item : j["api_keys"]) {
+        std::string name = item.value("name", "");
+        std::string key = item.value("key", "");
+        api_keys.insert({ name, key });
+        std::cout << name << " " << key << "\n";
+    }
+    if (!api_keys.empty()) {
+        std::cout << "Api_load path: " << path << " status: ";
+        SetColorr(2);
+        std::cout << "Succsesful\n";
+        SetColorr();
+    }
+    else {
+        std::cout << "Api_load status:";
+        SetColorr(12);
+        std::cout << "Fail\n";
+        SetColorr();
+    }
+}
+
+std::string file_manager::get_api_key(const std::string api)
+{
+    std::shared_lock lock(guilds_mutex);
+    if (api_keys.contains(api)) {
+
+        return std::string(api_keys[api]);
+    }
+    else {
+        std::cout << "FAIL TO GET API\n";
+        return std::string("");
+    }
+    
+}
+
+std::unordered_map<std::string, std::string> file_manager::get_all_api_keys()
+{
+    std::shared_lock lock(guilds_mutex);
+    return std::unordered_map<std::string, std::string>(api_keys);
+}
+
 void file_manager::add_guild(const Guild& g)
 {
     std::unique_lock lock(guilds_mutex);

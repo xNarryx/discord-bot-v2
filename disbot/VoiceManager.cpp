@@ -1,8 +1,16 @@
 #include "VoiceManager.h"
 
-size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp) {
+
+
+size_t WriteCallbackFile(void* contents, size_t size, size_t nmemb, void* userp) {
 	std::ofstream* file = static_cast<std::ofstream*>(userp);
 	file->write(static_cast<char*>(contents), size * nmemb);
+	return size * nmemb;
+}
+size_t WriteCallbackSTR(void* contents, size_t size, size_t nmemb, void* userp)
+{
+	std::string* response = static_cast<std::string*>(userp);
+	response->append(static_cast<char*>(contents), size * nmemb);
 	return size * nmemb;
 }
 std::string escape_json(const std::string& input) {
@@ -20,6 +28,10 @@ std::string escape_json(const std::string& input) {
 	return out;
 }
 
+
+void VoiceManager::add_api_keys(std::unordered_map <std::string, std::string> api_keys){
+	this->api_keys = api_keys;
+}
 std::vector<uint8_t> VoiceManager::to_pcmdata(std::string& way, float volume)
 {
 	std::vector<int16_t> pcm_samples; // сначала собираем в int16_t
@@ -159,10 +171,11 @@ bool VoiceManager::play(std::string way, dpp::snowflake guild, dpp::event_dispat
 	return false;
 }
 
-std::string VoiceManager::tts_create(std::string text, User* user, std::string file_name, std::string file_path)
+std::string VoiceManager::tts_create(std::string text, User* user, std::string file_name, std::string file_path, std::string prompt)
 {
-	if (user->get_user_tts_voice().substr(0, 2) == user->get_user_tts_voice().substr(0, 2)) {
-		std::string apiKey = "85ae882f70bc42feabb20b913ad11dd8";
+	std::string check1 = "&hl=ru";
+	if (user->get_user_tts_voice().substr(0, 2) == check1.substr(0, 2)) {
+		std::string apiKey = get_api_keyy("rss");
 
 		CURL* curl = curl_easy_init();
 		if (!curl) {
@@ -184,7 +197,7 @@ std::string VoiceManager::tts_create(std::string text, User* user, std::string f
 		std::string path = file_path + file_name + ".MP3";
 		std::ofstream file(path, std::ios::binary);
 		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
+		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallbackFile);
 		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
 
 		CURLcode res = curl_easy_perform(curl);
@@ -193,52 +206,67 @@ std::string VoiceManager::tts_create(std::string text, User* user, std::string f
 
 		return path;
 	}
-	else {
-		std::string apiKey = "sk_c883d9bbf42165f41be1601423b8d4203a09d25c892b11fb";
-		std::string voice_id = user->get_user_tts_voice(); // ID озвучки у пользователя
-		
-		voice_id = "Xb7hH8MSUJpSbSDYk0k2";
+	else 
+		if (user->get_user_tts_voice().substr(0, user->get_user_tts_voice().find(" ")) == "Gemini") {
+			std::string Voice = user->get_user_tts_voice().substr(user->get_user_tts_voice().find(" ")+1);
+			std::vector<std::string> models = 
+			{ "gemini-3.1-flash-tts-preview", 
+			"gemini-2.5-flash-preview-tts" };
+			for (auto& model : models) {
+				CURL* curl = curl_easy_init();
+				nlohmann::json body = {
+					{"model", "gemini-3.1-flash-tts-preview"},
+					{"input", prompt + ": " + text},
+					{"response_format", {
+						{"type", "audio"}
+					}},
+					{"generation_config", {
+						{"speech_config", {
+							{ {"voice", Voice} }
+						}}
+						}}
+				};
+				std::cout << "Created request for gemini TTS\n";
+				std::string json_str = body.dump();
+				struct curl_slist* headers = nullptr;
+				headers = curl_slist_append(headers, ("x-goog-api-key: " + get_api_keyy("gemini")).c_str());
+				headers = curl_slist_append(headers, "Content-Type: application/json");
+				curl_easy_setopt(curl, CURLOPT_URL,
+					"https://generativelanguage.googleapis.com/v1beta/interactions");
+				curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json_str.c_str());
+				curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+				curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallbackSTR);
+				std::string path = file_path + file_name + ".wav";
+				std::string str;
+				curl_easy_setopt(curl, CURLOPT_WRITEDATA, &str);
 
-		std::string url = "https://api.elevenlabs.io/v1/text-to-speech/" + voice_id + "?output_format=mp3_44100_128";
+				CURLcode res = curl_easy_perform(curl);
+				if (res == CURLE_OK)
+				{
+					AudioData audio = GeminiAudio::Parse(str);
 
-		CURL* curl = curl_easy_init();
-		if (!curl) return "";
+					if (audio.usable) {
 
-		std::string json = R"({"text":")" + text + R"(","model_id":"eleven_multilingual_v2"})";
-		std::string path = file_path + file_name + ".mp3";
+						WavWriter::Save(audio, path);
+					}
+					else {
+						continue;
+					}
+				}
+				else
+				{
+					std::cout << "Curl error: " << curl_easy_strerror(res) << std::endl;
+					return "";
+				}
+				curl_slist_free_all(headers);
+				curl_easy_cleanup(curl);
 
-		std::ofstream file(path, std::ios::binary);
-
-		curl_easy_setopt(curl, CURLOPT_URL, url.c_str());
-		curl_easy_setopt(curl, CURLOPT_POST, 1L);
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, nullptr);
-		curl_slist* headers = nullptr;
-		headers = curl_slist_append(headers, ("xi-api-key: " + apiKey).c_str());
-		headers = curl_slist_append(headers, "Content-Type: application/json");
-		curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, json.c_str());
-		curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, WriteCallback);
-		curl_easy_setopt(curl, CURLOPT_WRITEDATA, &file);
-
-		CURLcode res = curl_easy_perform(curl);
-		curl_slist_free_all(headers);
-		curl_easy_cleanup(curl);
-		file.close();
-
-		if (res != CURLE_OK) {
-			std::cerr << "CURL error: " << curl_easy_strerror(res) << std::endl;
+				return path;
+			}
+		}
+		else {
 			return "";
 		}
-
-		// проверяем что файл существует и не пустой
-		std::ifstream f(path, std::ios::binary | std::ios::ate);
-		if (!f || f.tellg() == 0) {
-			std::cerr << "TTS returned empty file!" << std::endl;
-			return "";
-		}
-
-		return path;
-
-		
-	}
+	
 }
+
