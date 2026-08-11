@@ -25,11 +25,16 @@ file_manager fm;
 VoiceManager v;
 
 std::unordered_map<std::string, std::function<void(const dpp::slashcommand_t&)>> handlers_cmd;
-std::unordered_set<std::string> swears;
+std::unordered_set<std::string> swears, notswears;
 bool has_swear(std::string str) {
 	for (auto& word : swears) {
 		
 		if (str.find(word) != std::string::npos) {
+			for (auto& words : notswears) {
+				if (str.find(words) != std::string::npos) {
+					return(false);
+				}
+			}
 			return(true);
 		}
 	}
@@ -318,6 +323,20 @@ void load_swears(const std::string& filename) {
 	while (std::getline(file, line)) {
 		if (!line.empty()) {
 			swears.insert(line);
+		}
+	}
+}
+void load_notswears(const std::string& filename) {
+	std::ifstream file(filename);
+
+	if (!file.is_open()) {
+		return;
+	}
+
+	std::string line;
+	while (std::getline(file, line)) {
+		if (!line.empty()) {
+			notswears.insert(line);
 		}
 	}
 }
@@ -1559,6 +1578,7 @@ int main()
 	dpp::snowflake owner_id = 879386342931451914;
 	load_commads(bot);
 	load_swears("D:\\DEV\\Disbot\\swears.txt");
+	load_notswears("D:\\DEV\\Disbot\\notswears.txt");
 	bot_thread(bot);
 	bot_thread_saver(bot);
 	bot_thread_exp_lvls(bot);
