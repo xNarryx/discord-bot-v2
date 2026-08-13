@@ -1730,15 +1730,19 @@ int main()
 	});
 
 	bot.on_guild_create([&bot](const dpp::guild_create_t& event) {
-		std::this_thread::sleep_for(std::chrono::seconds(5));
 		
 		dpp::guild g = event.created;
-		if (!fm.find_guild(g.id)) {
+		dpp::snowflake guild_id = event.created.id;
+		if (!fm.find_guild(guild_id)) {
 			
-				Guild gl = fm.get_guild(g.id);
+				Guild& gl = fm.get_guild(guild_id);
 				User u;
 				u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
 				gl.add_user(u);
+
+				bot.message_create(
+					dpp::message(1537540872885903400, "## :green_square: Bot joined: " + g.name + "\n Guild_ID: " + std::to_string(guild_id) + "\n Owner ID: " + std::to_string(g.owner_id))
+				);
 
 				SetColor(12);
 				std::cout << "Bot joined guild: "
@@ -1747,6 +1751,14 @@ int main()
 			
 		}
 
+		});
+
+	bot.on_guild_delete([&bot](const dpp::guild_delete_t event) {
+
+		dpp::guild g = event.deleted;
+			bot.message_create(
+				dpp::message(1537540872885903400, "## :red_square: Bot leaved: " + g.name + "\n Guild_ID: " + std::to_string(event.guild_id) + "\n Owner ID: " + std::to_string(g.owner_id))
+			);
 		});
 
 	bot.on_voice_state_update([&bot](const dpp::voice_state_update_t& event) {
