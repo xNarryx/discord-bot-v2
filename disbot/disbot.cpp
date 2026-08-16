@@ -1882,6 +1882,7 @@ int main()
 		bool answered = false;
 		bot.message_get(event.msg.message_reference.message_id,
 			event.msg.message_reference.channel_id,
+			// озвучка ботом
 			[&bot, channel_id, token_gemini, message, guild_id, &g, author_id, &answered]
 			(const dpp::confirmation_callback_t& cc)
 			{
@@ -1954,32 +1955,35 @@ int main()
 					std::cout << "message_get failed\n";
 				}
 			});
+			// ответ в чате пользователям
 		if (lmessage.find("<@1276280240762523658>") != std::string::npos || lmessage.find("нимф") != std::string::npos) {
-			if (!answered) {
-				std::string result;
-				for (auto& message : g.get_all_channel_history(channel_id)) {
-					result += message + "\n";
+			if (author_id != bot.me.id) {
+				if (!answered) {
+					std::string result;
+					for (auto& message : g.get_all_channel_history(channel_id)) {
+						result += message + "\n";
+					}
+					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
+
+					std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
+					dpp::cluster* bot_ptr = &bot;
+					answered = true;
+					std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id, guild_id]()
+						{
+							try
+							{
+								auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
+
+								bot_ptr->message_create(
+									dpp::message(channel_id, answer)
+								);
+							}
+							catch (const std::exception& e)
+							{
+								std::cout << "AI error: " << e.what() << std::endl;
+							}
+						}).detach();
 				}
-				std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
-
-				std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
-				dpp::cluster* bot_ptr = &bot;
-				answered = true;
-				std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id, guild_id]()
-					{
-						try
-						{
-							auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
-
-							bot_ptr->message_create(
-								dpp::message(channel_id, answer)
-							);
-						}
-						catch (const std::exception& e)
-						{
-							std::cout << "AI error: " << e.what() << std::endl;
-						}
-					}).detach();
 			}
 		}
 

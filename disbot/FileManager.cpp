@@ -143,7 +143,7 @@ bool file_manager::save_guilds(const std::string& folder_path)
 
     for (const auto& [gid, guild] : guilds)
     {
-        std::string path = folder_path + std::to_string(gid) + ".json";
+        std::string path = folder_path + std::to_string(gid) + "dump.json";
         std::ofstream file(path);
 
         if (!file.is_open()) {
@@ -152,6 +152,32 @@ bool file_manager::save_guilds(const std::string& folder_path)
 
         file << guild.to_json().dump(0);
         file.close();
+
+        std::ifstream file1(path);
+        nlohmann::json j;
+        dpp::snowflake gid1 = 1;
+        try {
+            file1 >> j;
+            gid1 = j.value("guild_id", dpp::snowflake{ 0 });
+            if (gid1 != 1) {
+                file1.close();
+                fs::rename(path, folder_path + std::to_string(gid) + ".json");
+            }
+            else {
+                file1.close();
+                SetColorr(12);
+                std::cout << "Can't save path broken!: " + path << "\n";
+                SetColorr();
+            }
+        }
+        catch (const std::exception& e) {
+            file1.close();
+            SetColorr(12);
+            std::cout << "Can't save path broken: " << path << "\n";
+            std::cout << "Error: " << e.what() << "\n";
+            SetColorr();
+        }
+        
     }
 
     return true;
@@ -170,10 +196,12 @@ bool file_manager::load_guilds(const std::string& folder_path)
             
             if (!entry.is_regular_file() || entry.path().extension() != ".json")
                 continue;
-            std::cout << "Loading path: " << entry.path();
             std::ifstream file(entry.path());
+            
             if (!file.is_open()) continue;
-
+            if (entry.path().filename().string().find("dump") != std::string::npos)
+                continue;
+            std::cout << "Loading path: " << entry.path();
             nlohmann::json j;
             dpp::snowflake gid = 0;
             try {
