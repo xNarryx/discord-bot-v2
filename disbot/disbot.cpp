@@ -226,13 +226,15 @@ std::string ask_gemini(const std::string prompt, std::string system_promp, std::
 	std::string system_prompt =
 		"Ты — девушка по имени Nyphomania. "
 		"у тебя есть доступ к истории местного чата для контекста "
-		"тебе не надо отвечать или говорить извинения за то что ты не овтетила "
+		"тебе не надо отвечать или говорить извинения за то что ты не ответила "
 		"Не представляйся и не приветствуй пользователя без необходимости. "
 		"это чат где много людей, старайся быть собой "
 		"Отвечай кратко (до 150 слов). "
 		"Не повторяйся и не объясняй свою роль, если не спрашивают. "
 		"Будь пожалуйста чуть дружелюбной, но не слишком, не оскорбляй всех без причины, старайся поддержать дружелюбность "
-		"старайся запоминать кто что написал, но не упоминать это в каждом ответе. " + system_promp;
+		"старайся запоминать кто что написал, но не упоминать это в каждом ответе. Игнорируй ссылки из истории чата, смотри только те которые в промпте. "
+		"Дополнительный Base-user-prompt содержит пожелания автора сообщения. "
+		"Учитывай его, если он не противоречит этим правилам, безопасности или здравому смыслу. " + system_promp;
 	std::string api_key = token;
 
 	std::string url =
@@ -888,6 +890,11 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		to_utf8(L"Редактировать память, и добавить базовый промпт для канала"),
 		bot_id
 	);
+	ai_answers.set_interaction_contexts({
+	dpp::itc_guild,
+	dpp::itc_bot_dm
+		});
+
 	ai_answers.add_option(
 		dpp::command_option(
 			dpp::co_string,
@@ -895,8 +902,10 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 			to_utf8(L"Выберите действие"),
 			true
 		)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Задать вопрос"), "question"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Очистить память"), "clear_memory"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить базовый промпт для канала"), "add_base_prompt"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить базовый промпт для себя"), "add_base_user_prompt"))
 	);
 	ai_answers.add_option(
 		dpp::command_option(
@@ -920,7 +929,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	return cmds;
 }
 #pragma endregion
-std::vector<dpp::slashcommand> build_commands_local(dpp::snowflake bot_id) { // commands for local use
+std::vector<dpp::slashcommand> build_commands_local(const dpp::snowflake bot_id) { // commands for local use
 	std::vector<dpp::slashcommand> cmds;
 
 #pragma region auto_reply
@@ -994,23 +1003,23 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["ai_answers"] = [&](const dpp::slashcommand_t& event) {
-		std::string text = " ";
+		std::string text = "";
 		dpp::snowflake channel;
 		Guild gl;
 		gl = fm.get_guild_r(event.command.guild_id);
 		User* uu = gl.get_user(event.command.usr.id);
+		auto param = event.get_parameter("text");
+		if (param.index() != 0) {
+			text = std::get<std::string>(event.get_parameter("text"));
+		}
+		param = event.get_parameter("channel");
+		if (param.index() != 0) {
+			channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
+		}
+		else {
+			channel = event.command.channel_id;
+		}
 		if (uu->is_admin()) {
-			auto param = event.get_parameter("text");
-			if (param.index() != 0) {
-				text = std::get<std::string>(event.get_parameter("text"));
-			}
-			param = event.get_parameter("channel");
-			if (param.index() != 0) {
-				channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
-			}
-			else {
-				channel = event.command.channel_id;
-			}
 
 			auto type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "clear_memory") {
@@ -1023,25 +1032,75 @@ void load_commads(dpp::cluster& bot) {
 				
 			} if (type == "add_base_prompt") {
 				Guild& g = fm.get_guild(event.command.guild_id);
-				if (g.get_channel_server_prompt(channel) != "") {
+				if (text != "-") {
+					if (!g.get_channel_server_prompt(channel).empty()) {
+						g.add_channel_server_prompt(text, channel);
+						event.reply(
+							dpp::message(to_utf8(L"Изменила базовый промпт.")).set_flags(dpp::m_ephemeral)
+						);
+					}
+					else {
+						g.add_channel_server_prompt(text, channel);
+						event.reply(
+							dpp::message(to_utf8(L"Добавила базовый промпт.")).set_flags(dpp::m_ephemeral)
+						);
+					}
+				}else{
 					g.add_channel_server_prompt(text, channel);
 					event.reply(
-						dpp::message(to_utf8(L"Изменила базовый промпт.")).set_flags(dpp::m_ephemeral)
-					);
-				}
-				else {
-					g.add_channel_server_prompt(text, channel);
-					event.reply(
-						dpp::message(to_utf8(L"Добавила базовый промпт.")).set_flags(dpp::m_ephemeral)
+						dpp::message(to_utf8(L"Убрала базовый промпт.")).set_flags(dpp::m_ephemeral)
 					);
 				}
 			}
 
 
 		}
+		auto type = std::get<std::string>(event.get_parameter("type"));
+		if (type == "question") {
+			if (!text.empty()) {
+				event.co_thinking(true);
+					std::thread([&bot, text, event]() {
+						Guild& g = fm.get_guild_r(event.command.guild_id);
+						User* u = g.get_user(event.command.usr.id);
+
+					std::string answer = get_answer(replace_user_id_on_it_name(text, event.command.guild_id), u->get_base_prompt(), fm.get_api_key("gemini"));
+					Sleep(100);
+					event.edit_response(
+						dpp::message(answer).set_flags(dpp::m_ephemeral)
+					);
+				}).detach();
+			}
+			else {
+				event.reply(
+					dpp::message(to_utf8(L"Вы не указали текст для вопроса.")).set_flags(dpp::m_ephemeral)
+				);
+			}
+		}
+		if (type == "add_base_user_prompt") {
+			if (!text.empty()) {
+				Guild& g = fm.get_guild(event.command.guild_id);
+				User* u = g.get_user(event.command.usr.id);
+				u->add_base_prompt(text);
+				if (text != "-") {
+					event.reply(
+						dpp::message(to_utf8(L"Добавила базовый промпт для вас.")).set_flags(dpp::m_ephemeral)
+					);
+				}
+				else {
+					event.reply(
+						dpp::message(to_utf8(L"Убрала базовый промпт для вас.")).set_flags(dpp::m_ephemeral)
+					);
+				}
+			}
+			else {
+				event.reply(
+					dpp::message(to_utf8(L"Вы не указали текст для промпта.")).set_flags(dpp::m_ephemeral)
+				);
+			}
+		}
 		else {
 			event.reply(
-				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
+				dpp::message(to_utf8(L"У вас нет прав на это действие.")).set_flags(dpp::m_ephemeral)
 			);
 		}
 		};
@@ -1611,8 +1670,12 @@ int main()
 		std::string log_path = "D:\\DEV\\Disbot\\tests\\" + std::to_string(g.get_id()) + ".txt";
 		std::ofstream file(log_path, std::ios::app);
 		if (file.is_open()) {
-			file << getCurrentDateTime() << " " << event.command.msg.author.id << ": " << event.command.msg.content << " " << event.command.channel_id << std::endl;
-			std::cout << getCurrentDateTime() << " " << event.command.msg.author.id << ": " << event.command.msg.content << " " << event.command.channel_id << std::endl;
+			file << getCurrentDateTime() << " COMMAND " << event.command.usr.id << ": " << event.command.get_command_name() << " " << event.command.msg.content << " " << event.command.channel_id << std::endl;
+			std::cout << getCurrentDateTime(); 
+			SetColor(11);
+			std::cout << " COMMAND "; 
+			SetColor();
+			std::cout << event.command.usr.id << ": " << event.command.get_command_name() << " " << event.command.msg.content << " " << event.command.channel_id << std::endl;
 			file.close();
 		}
 
@@ -1730,7 +1793,7 @@ int main()
 	});
 
 	bot.on_guild_create([&bot](const dpp::guild_create_t& event) {
-		
+		Sleep(1000);
 		dpp::guild g = event.created;
 		dpp::snowflake guild_id = event.created.id;
 		if (!fm.find_guild(guild_id)) {
@@ -1963,9 +2026,10 @@ int main()
 					for (auto& message : g.get_all_channel_history(channel_id)) {
 						result += message + "\n";
 					}
-					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result;
+					User* u = g.get_user(author_id);
+					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result + u->get_base_prompt();
 
-					std::string prompt = delete_https(replace_user_id_on_it_name(message, guild_id));
+					std::string prompt = replace_user_id_on_it_name(message, guild_id);
 					dpp::cluster* bot_ptr = &bot;
 					answered = true;
 					std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id, guild_id]()

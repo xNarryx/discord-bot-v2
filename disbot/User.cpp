@@ -1,6 +1,6 @@
 #include "User.h"
 
-void User::Create_user(dpp::snowflake user_id, int exp_text, int exp_voice, int time_muted, std::unordered_map<int, std::string> warns, bool banned, bool admin, std::string tts_voice, bool tts_enable, bool moderate_text, std::unordered_set<dpp::snowflake> roles_id, int exp_swears)
+void User::Create_user(dpp::snowflake user_id, int exp_text, int exp_voice, int time_muted, std::unordered_map<int, std::string> warns, bool banned, bool admin, std::string tts_voice, bool tts_enable, bool moderate_text, std::unordered_set<dpp::snowflake> roles_id, int exp_swears, std::string base_prompt)
 {
 	this->user_id = user_id;
 	this->exp_text = exp_text;
@@ -17,6 +17,7 @@ void User::Create_user(dpp::snowflake user_id, int exp_text, int exp_voice, int 
 	this->tts_enable = tts_enable;
 	this->moderate_text = moderate_text;
 	this->exp_swears = exp_swears;
+	this->base_prompt = base_prompt;
 }
 
 void User::Add_exp_text(int exp){
@@ -186,6 +187,20 @@ void User::remove_role(dpp::snowflake id)
 	if (roles_id.contains(id)) {
 		roles_id.erase(id);
 	}
+}
+
+void User::add_base_prompt(std::string str)
+{
+	if (str == "-") {
+		str = "";
+	}
+	
+	base_prompt = "Base - user - prompt: " + str;
+}
+
+void User::remove_base_prompt()
+{
+	base_prompt = "Base-user-prompt: ";
 }
 
 

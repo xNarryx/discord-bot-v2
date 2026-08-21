@@ -22,8 +22,9 @@ private:
 	std::string tts_voice;
 	bool tts_enable;
 	bool moderate_text;
+	std::string base_prompt;
 public:
-	void Create_user(dpp::snowflake user_id = 0, int exp_text = 0, int exp_voice = 0, int time_muted = 0, std::unordered_map<int, std::string> warns = {}, bool banned = false, bool admin = false, std::string tts_voice = "&hl=ru-ru&v=Peter", bool tts_enable = false, bool moderate_text = true, std::unordered_set<dpp::snowflake> roles_id = {}, int exp_swears = 0);
+	void Create_user(dpp::snowflake user_id = 0, int exp_text = 0, int exp_voice = 0, int time_muted = 0, std::unordered_map<int, std::string> warns = {}, bool banned = false, bool admin = false, std::string tts_voice = "&hl=ru-ru&v=Peter", bool tts_enable = false, bool moderate_text = true, std::unordered_set<dpp::snowflake> roles_id = {}, int exp_swears = 0, std::string base_prompt = "Base-user-prompt: ");
 	void Add_exp_text(int exp);
 	void Remove_exp_text(int exp);
 	void Add_exp_voice(int exp);
@@ -56,6 +57,9 @@ public:
 	void remove_role(dpp::snowflake id);
 	std::unordered_set<dpp::snowflake> get_roles() const { return roles_id; }
 	bool has_role(dpp::snowflake id) const { return roles_id.contains(id); }
+	std::string get_base_prompt() const { return base_prompt; }
+	void add_base_prompt(std::string str);
+	void remove_base_prompt();
 
 	nlohmann::json to_json() const {
 		nlohmann::json warns_json = nlohmann::json::object();
@@ -76,6 +80,7 @@ public:
 		j["tts_enable"] = tts_enable;
 		j["moderate_text"] = moderate_text;
 		j["exp_swears"] = exp_swears;
+		j["base_prompt"] = base_prompt;
 		for (const auto& id : roles_id)
 			j["roles_id"].push_back(static_cast<uint64_t>(id));
 
@@ -96,6 +101,7 @@ public:
 		u.tts_voice = j.value("tts_voice", "&hl=ru-ru&v=Peter");
 		u.tts_enable = j.value("tts_enable", false);
 		u.moderate_text = j.value("moderate_text", true);
+		u.base_prompt = j.value("base_prompt", "");
 
 		if (j.contains("warns") && j["warns"].is_object()) {
 			for (auto it = j["warns"].begin(); it != j["warns"].end(); ++it) {

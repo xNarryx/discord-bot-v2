@@ -19,7 +19,6 @@ void file_manager::load_api_keys(const std::string path)
         std::string name = item.value("name", "");
         std::string key = item.value("key", "");
         api_keys.insert({ name, key });
-        std::cout << name << " " << key << "\n";
     }
     if (!api_keys.empty()) {
         std::cout << "Api_load path: " << path << " status: ";
