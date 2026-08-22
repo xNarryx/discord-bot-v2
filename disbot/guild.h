@@ -36,6 +36,8 @@ private:
     std::unordered_map<std::string, AutoReplyData> auto_reply;
     std::unordered_map<dpp::snowflake, AI_reply> chat_history;
     std::vector<lvl_role> lvl_roles;
+    int messages_count;
+    int users_in_voices;
     bool anti_swears;
 public:
     void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
@@ -45,7 +47,10 @@ public:
         std::unordered_map<dpp::snowflake, User> users = {},
         std::unordered_set<std::string> banned_words = {},
         std::unordered_map<std::string, AutoReplyData> auto_reply = {},
-        std::vector<lvl_role> lvl_roles = {});
+        std::vector<lvl_role> lvl_roles = {},
+        int messages_count = 0,
+        int users_in_voices = 0,
+        bool anti_swears = false);
     void add_message_history(const std::string& str, dpp::snowflake channel_id);
     std::deque<std::string> get_all_channel_history(dpp::snowflake channel_id);
     std::unordered_map<dpp::snowflake, AI_reply>  get_all_chat_history();
@@ -73,10 +78,15 @@ public:
     bool is_auto_reply_word(std::string word, dpp::snowflake channel);
     bool is_anti_swear();
     bool is_banned_id(dpp::snowflake user_id);
+    void set_messages_count(int i);
+    void add_messages_count(int i);
+    void set_users_in_voice(int i);
     std::string get_auto_reply_message(std::string key_word);
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }
     std::vector<lvl_role> get_lvl_roles() const { return lvl_roles; }
+	int get_messages_count() const { return messages_count; }
+	int get_users_in_voice() const { return users_in_voices; }
 
 	User* get_user(dpp::snowflake user_id);
 	dpp::snowflake get_id() const { return guild_id; }
@@ -125,8 +135,8 @@ public:
         }
         j["lvl_roles"] = lvl_roles_json;
 
+		// auto_reply
         nlohmann::json auto_reply_json;
-
         for (const auto& [key, data] : auto_reply)
         {
             auto_reply_json[key] = {
@@ -136,8 +146,8 @@ public:
         }
         j["auto_reply"] = auto_reply_json;
 
+		// chat_history
         nlohmann::json chat_history_json;
-
         for (const auto& [user_id, data] : chat_history)
         {
             chat_history_json[std::to_string(user_id)] =
@@ -153,8 +163,11 @@ public:
         j["banned_words"] = nlohmann::json::array();
         for (const auto& word : banned_words)
             j["banned_words"].push_back(word);
-        j["anti_swears"] = anti_swears;
 
+		// anti_swears
+        j["anti_swears"] = anti_swears;
+		// messages_count
+		j["messages_count"] = messages_count;
         return j;
     }
 
@@ -239,7 +252,10 @@ public:
             for (const auto& word : j["banned_words"])
                 g.add_banned_word(word);
         }
+		// anti_swears
         g.anti_swears = j.value("anti_swears", false);
+		// messages_count
+        g.messages_count = j.value("messages_count", 0);
 
         return g;
     }

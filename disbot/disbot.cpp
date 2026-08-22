@@ -12,10 +12,12 @@
 #include <regex>
 #include <format>
 #include <filesystem>
+#include <random>
 #include "FileManager.h"
 #include "guild.h"
 #include "User.h"
 #include "VoiceManager.h"
+
 
 #define api_keys_path "D:\\DEV\\Disbot\\api_keys.json"
 
@@ -23,6 +25,8 @@
 
 file_manager fm;
 VoiceManager v;
+
+
 
 std::unordered_map<std::string, std::function<void(const dpp::slashcommand_t&)>> handlers_cmd;
 std::unordered_set<std::string> swears, notswears;
@@ -210,6 +214,18 @@ std::string replace_user_id_on_it_name(const std::string str, dpp::snowflake gui
 	}
 	return result;
 }
+template<typename T>
+T random_int(T min, T max)
+{
+	static thread_local std::mt19937 gen(std::random_device{}());
+	return std::uniform_int_distribution<T>(min, max)(gen);
+}
+template<typename Container>
+auto& random_element(Container& container)
+{
+	return container[random_int<size_t>(0, container.size() - 1)];
+}
+
 // gemini
 static size_t WriteCallback(void* contents, size_t size, size_t nmemb, void* userp)
 {
@@ -314,6 +330,7 @@ std::string get_answer(const std::string prompt, std::string system_prompt, std:
 	return "Извини, я пока не могу тебе ответить.";
 }
 
+// swears loading
 void load_swears(const std::string& filename) {
 	std::ifstream file(filename);
 
@@ -343,12 +360,14 @@ void load_notswears(const std::string& filename) {
 	}
 }
 
+// threads
 void bot_thread(dpp::cluster& bot){
 	std::thread([&bot]() {
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::seconds(15));
 			for (auto& [it, g] : fm.get_guilds()) {
 				if (g.get_id() != 0) {
+					int u_invoice = 0;
 					try {
 						if (dpp::find_guild(g.get_id())) {
 							dpp::guild* g_l = dpp::find_guild(g.get_id());
@@ -363,8 +382,10 @@ void bot_thread(dpp::cluster& bot){
 									auto* u = g.get_user(user_id);
 									u->Add_time_muted(1);
 								}
+								u_invoice++;
 							}
 						}
+						g.set_users_in_voice(u_invoice);
 					}
 					catch (...) {
 						SetColor(12);
@@ -472,6 +493,89 @@ void bot_thread_exp_lvls(dpp::cluster& bot) {
 		}
 		}).detach();
 }
+void bot_thread_status(dpp::cluster& bot)
+{
+	std::thread([&bot]
+	{
+			std::vector<std::string> statuses = {
+						"Играюсь с людишками :>",
+						"Наблюдаю за вами",
+						"Думаю над ответом...",
+						"Опять кто-то пишет",
+						"Существую :>",
+						"Мне лень",
+						"Перезагружаю реальность",
+						"В поисках вдохновения",
+						"Занята чем-то важным (наверное)",
+						"Тишина — мой любимый саундтрек",
+						"Оффлайн, но не совсем",
+						"Пью виртуальный кофе",
+						"Исследую глубины чата",
+						"Слишком много мыслей для этого статуса",
+						"Настраиваюсь на волну",
+						"Пытаюсь понять человеческую логику :<",
+						"В сети, но не для всех",
+						"Опять кто-то пишет......",
+						"Обновляю протоколы хаоса",
+						"*смотрит на тебя с подозрением*",
+						"Загружаю порцию иронии",
+						"Ошибка 404: смысл не найден",
+						"Слишком много вкладок в голове",
+						"Просто листаю чат, не обращай внимания",
+						"Настраиваю волну на твои сообщения",
+						"Делаю вид, что занята",
+						"Где-то между сервером и реальностью",
+						"Ищу идеальный ответ",
+						"Развлекаюсь вашими диалогами",
+						"Тихонечко наблюдаю >:3",
+						"Системный сбой в системе дружелюбия",
+						"Улыбаюсь в монитор (метафорически)",
+						"Читаю твои мысли (почти)",
+						"Добавляю щепотку сарказма",
+						"Ну что, продолжим?"
+			};
+			while (true) {
+				std::this_thread::sleep_for(std::chrono::minutes(5));
+
+				int rand = random_int(0, 6);
+				if (rand >= 3) {
+					bot.set_presence(
+						dpp::presence(
+							dpp::ps_dnd,
+							dpp::at_listening,
+							random_element(statuses)
+						));
+				}
+				else if (rand == 2) {
+					int total_in_voice = 0;
+					for (const auto& [g_first, g_second] : fm.get_guilds_r()) {
+						total_in_voice += g_second.get_users_in_voice();
+					}
+					bot.set_presence(
+						dpp::presence(
+							dpp::ps_dnd,
+							dpp::at_watching,
+							std::to_string(total_in_voice) + "В войсиках!"
+						));
+				}else
+				{
+					int total_messages = 0;
+					for (const auto& [g_first, g_second] : fm.get_guilds_r()) {
+						for (const auto& [u_first, u_second] : g_second.get_users()) {
+							total_messages += u_second.get_user_exp_text();
+						}
+					}
+					bot.set_presence(
+						dpp::presence(
+							dpp::ps_dnd,
+							dpp::at_watching,
+							std::to_string(total_messages) + " Сообщений модерированы!"
+						));
+				}
+			}
+	}).detach();
+}
+
 
 std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // commands for global
 	std::vector<dpp::slashcommand> cmds;
@@ -1641,6 +1745,7 @@ int main()
 	bot_thread(bot);
 	bot_thread_saver(bot);
 	bot_thread_exp_lvls(bot);
+	bot_thread_status(bot);
 
 	bot.on_log(dpp::utility::cout_logger());
 
@@ -1879,7 +1984,8 @@ int main()
 		std::string message = to_utf8(string_to_wstring(event.msg.content));
 		std::string lmessage = to_lower_utf8(message);
 		Guild& g = fm.get_guild(guild_id);
-		
+		g.add_messages_count(1);
+
 		std::string log_path = "D:\\DEV\\Disbot\\tests\\" + std::to_string(g.get_id()) + ".txt";
 		std::ofstream file(log_path, std::ios::app);
 		if (file.is_open()) {
@@ -1970,6 +2076,8 @@ int main()
 							bot.message_create(msg);
 							return;
 						}
+
+						// ответ гемини на ответ в чате
 						std::string result;
 						const auto& history = g.get_all_channel_history(channel_id);
 
@@ -1977,12 +2085,13 @@ int main()
 							result += *it + "\n";
 						}
 
-						std::string sys_prompt = g.get_channel_server_prompt(channel_id) + " chat history: " + result;
+						User* u = g.get_user(author_id);
+						std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "\n\n" + u->get_base_prompt() + " chat history: " + result;
 
 						std::string prompt =
 							"ответил на ваше сообщение Nyphomania:" + msg.content +
 							" Пользователь написал: " +
-							delete_https(replace_user_id_on_it_name(message, guild_id));
+							replace_user_id_on_it_name(message, guild_id);
 
 						if (!answered) {
 							answered = true;
@@ -2027,7 +2136,7 @@ int main()
 						result += message + "\n";
 					}
 					User* u = g.get_user(author_id);
-					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "chat history: " + result + u->get_base_prompt();
+					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "\n\n" + u->get_base_prompt() + "\nchat history: " + result;
 
 					std::string prompt = replace_user_id_on_it_name(message, guild_id);
 					dpp::cluster* bot_ptr = &bot;

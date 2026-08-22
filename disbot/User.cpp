@@ -195,7 +195,7 @@ void User::add_base_prompt(std::string str)
 		str = "";
 	}
 	
-	base_prompt = "Base - user - prompt: " + str;
+	base_prompt = "Base-user-prompt: " + str;
 }
 
 void User::remove_base_prompt()

@@ -2,7 +2,7 @@
 #include "User.h"
 #include <nlohmann/json.hpp>
 
-void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowflake> banned_ids, std::unordered_set<dpp::snowflake> admin_ids, std::unordered_set<dpp::snowflake> banned_channels, std::unordered_set<dpp::snowflake> tts_channels, std::unordered_map<dpp::snowflake, User> users, std::unordered_set<std::string> banned_words, std::unordered_map<std::string, AutoReplyData> auto_reply, std::vector<lvl_role> lvl_roles){
+void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowflake> banned_ids, std::unordered_set<dpp::snowflake> admin_ids, std::unordered_set<dpp::snowflake> banned_channels, std::unordered_set<dpp::snowflake> tts_channels, std::unordered_map<dpp::snowflake, User> users, std::unordered_set<std::string> banned_words, std::unordered_map<std::string, AutoReplyData> auto_reply, std::vector<lvl_role> lvl_roles, int messages_count, int users_in_voices, bool anti_swears){
 	this->guild_id = guild_id;
 	this->banned_ids = banned_ids;
 	this->admin_ids = admin_ids;
@@ -12,6 +12,9 @@ void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowfl
 	this->banned_channels = banned_channels;
 	this->auto_reply = auto_reply;
 	this->lvl_roles = lvl_roles;
+	this->messages_count = messages_count;
+	this->users_in_voices = users_in_voices;
+	this->anti_swears = anti_swears;
 }
 
 void Guild::add_message_history(const std::string& str, dpp::snowflake channel_id)
@@ -232,6 +235,21 @@ bool Guild::is_banned_id(dpp::snowflake user_id)
 		return true;
 	}
 	return false;
+}
+
+void Guild::set_messages_count(int i)
+{
+	messages_count = i;
+}
+
+void Guild::add_messages_count(int i)
+{
+	messages_count += i;
+}
+
+void Guild::set_users_in_voice(int i)
+{
+	users_in_voices = i;
 }
 
 std::string Guild::get_auto_reply_message(std::string key_word)
