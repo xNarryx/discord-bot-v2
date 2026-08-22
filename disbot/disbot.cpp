@@ -127,16 +127,22 @@ std::vector<std::string> utf8_split(const std::string& str)
 
 	return result;
 }
-std::string normalize(const std::string str) {
-	std::unordered_set<std::string> chars = {
-		".", ",", ";", "'", "[", "]", "-", "=", "_", "+",
-		"!", "@", "#", "$", "%", "^", "&", "?", "*",
-		"(", ")", "~", "`", ":", "<", ">", "\\", "|", "/", "{", "}"
-	};
+bool is_cyrillic(const std::string& ch)
+{
+	if (ch.size() != 2)
+		return false;
 
-	std::unordered_map<std::string, std::string> letters = {
+	unsigned char c1 = static_cast<unsigned char>(ch[0]);
+
+	return c1 == 0xD0 || c1 == 0xD1;
+}
+
+
+std::string normalize(const std::string& input)
+{
+	static const std::unordered_map<std::string, std::string> letters = {
 		{"0", "о"},
-		{"4", "е"},
+		{"4", "ч"},
 		{"e", "е"},
 		{"l", "л"},
 		{"a", "а"},
@@ -149,21 +155,160 @@ std::string normalize(const std::string str) {
 		{"7", "ч"}
 	};
 
+	static const std::unordered_set<std::string> separators = {
+		".", ",", ";", "'", "[", "]", "-", "=", "_", "+",
+		"!", "@", "#", "$", "%", "^", "&", "?", "*",
+		"(", ")", "~", "`", ":", "<", ">", "\\", "|",
+		"{", "}", "/"
+	};
 
-	std::string string, prevch = "";
-	auto sybmols = utf8_split(str);
-	for (auto& ch : sybmols) {
-		if (chars.contains(ch) || ch == prevch)
+	auto symbols = utf8_split(input);
+
+	std::string result;
+	std::string word;
+
+	auto process_word = [&](const std::string& original)
+		{
+			if (original.empty())
+				return;
+
+			auto chars = utf8_split(original);
+
+			// Проверяем, есть ли кириллица
+			bool has_cyrillic = false;
+
+			for (const auto& ch : chars)
+			{
+				if (is_cyrillic(ch))
+				{
+					has_cyrillic = true;
+					break;
+				}
+			}
+
+			/*
+			 * Если слово полностью английское —
+			 * вообще его не изменяем.
+			 */
+			if (!has_cyrillic)
+			{
+				result += original;
+				return;
+			}
+
+			std::string normalized;
+
+			/*
+			 * Замена похожих символов:
+			 *
+			 * плoхой -> плохой
+			 * пл0х0й -> плохой
+			 */
+			for (const auto& ch : chars)
+			{
+				if (letters.contains(ch))
+					normalized += letters.at(ch);
+				else
+					normalized += ch;
+			}
+
+			/*
+			 * Убираем повторяющиеся символы:
+			 *
+			 * пиииидр -> пидр
+			 * плооохой -> плохой
+			 */
+			auto normalized_chars = utf8_split(normalized);
+
+			std::string compressed;
+			std::string previous;
+
+			for (const auto& ch : normalized_chars)
+			{
+				if (ch == previous)
+					continue;
+
+				compressed += ch;
+				previous = ch;
+			}
+
+			result += compressed;
+		};
+
+
+	for (size_t i = 0; i < symbols.size(); ++i)
+	{
+		const auto& ch = symbols[i];
+
+		/*
+		 * Проверяем начало URL.
+		 */
+		if (ch == "h")
+		{
+			std::string url;
+
+			for (size_t j = i; j < symbols.size(); ++j)
+			{
+				if (symbols[j] == " " ||
+					symbols[j] == "\n" ||
+					symbols[j] == "\r" ||
+					symbols[j] == "\t")
+				{
+					break;
+				}
+
+				url += symbols[j];
+			}
+
+			if (url.starts_with("http://") ||
+				url.starts_with("https://") ||
+				url.starts_with("www."))
+			{
+				process_word(word);
+				word.clear();
+
+				result += url;
+
+				i += utf8_split(url).size() - 1;
+
+				continue;
+			}
+		}
+
+		/*
+		 * Пробел — заканчиваем слово.
+		 */
+		if (ch == " " ||
+			ch == "\n" ||
+			ch == "\r" ||
+			ch == "\t")
+		{
+			process_word(word);
+			word.clear();
+
+			result += ch;
+
 			continue;
-		if (letters.contains(ch)) {
-			string += letters[ch];
 		}
-		else {
-			string += ch;
+
+		/*
+		 * Сепараторы просто игнорируем.
+		 *
+		 * е/б/а/л/а/й -> еблай
+		 * е.б.л.а.н   -> еблан
+		 * у*ебище     -> уебище
+		 */
+		if (separators.contains(ch))
+		{
+			continue;
 		}
-		prevch = ch;
+
+		word += ch;
 	}
-	return string;
+
+	process_word(word);
+	std::cout << result << "\n";
+	return result;
 }
 std::string extract_digits(const std::string& str)
 {
@@ -1326,19 +1471,31 @@ void load_commads(dpp::cluster& bot) {
 				}
 				else if (type == "list") {
 					std::vector<std::string> ban_word_list;
-					std::string reply = to_utf8(L"Список бан-вордов:\n```");
-					for (const auto& word : gl.get_banned_words()) {
-						reply += word + "\n";
-						if (reply.size() > 500) {
-							reply += "```";
-							ban_word_list.push_back(reply);
-							reply = "```";
+					std::string reply = "```";
+					if (!gl.get_banned_words().empty()) {
+						for (const auto& word : gl.get_banned_words()) {
+							reply += word + "\n";
+							if (reply.size() > 500) {
+								reply += "```";
+								ban_word_list.push_back(reply);
+								reply = "```";
+							}
 						}
-					}
-					reply += "```";
-					ban_word_list.push_back(reply);
-					for (const auto& words : ban_word_list) {
-						bot.message_create(dpp::message(event.command.channel_id, words));
+						reply += "```";
+						ban_word_list.push_back(reply);
+						int i = 0;
+						for (const auto& words : ban_word_list) {
+							if (i == 0)
+							{
+								event.reply(dpp::message("Список бан-вордов:" + words));
+							}
+							else {
+								bot.message_create(dpp::message(event.command.channel_id, words));
+							}
+						}
+					}else
+					{
+						event.reply("Список бан-вордов пуст.");
 					}
 					
 				}
@@ -1994,12 +2151,12 @@ int main()
 			std::cout << getCurrentDateTime() << " " << author_id << ": " << message << " " << channel_id << std::endl;
 			file.close();
 		}
-		if (!g.is_banned_channel(channel_id)) {
-			for (const auto& word : split(lmessage)) {
-				if (g.has_banned_word(normalize(word))) {
+		if (!g.is_banned_channel(channel_id) && author_id != bot.me.id) {
+			
+				if (g.has_banned_word(normalize(lmessage))) {
 					bot.message_delete(message_id, channel_id);
-					break;
 				}
+			for (const auto& word : split(lmessage)) {
 				if (has_swear(normalize(word))) {
 					Guild& guild = fm.get_guild(guild_id);
 					User* u = guild.get_user(author_id);
