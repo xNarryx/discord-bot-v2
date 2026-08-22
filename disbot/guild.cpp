@@ -218,9 +218,15 @@ bool Guild::is_auto_reply_word(std::string word, dpp::snowflake channel)
 		}
 	}
 	*/
-	if (auto_reply.contains(word))
-		if (auto_reply[word].channel_id == channel)
-		return true;
+	for (const auto& [phrase, reply] : auto_reply)
+	{
+		if (word.find(phrase) != std::string::npos &&
+			reply.channel_id == channel)
+		{
+			return true;
+		}
+	}
+
 	return false;
 }
 
@@ -252,11 +258,17 @@ void Guild::set_users_in_voice(int i)
 	users_in_voices = i;
 }
 
-std::string Guild::get_auto_reply_message(std::string key_word)
+std::string Guild::get_auto_reply_message(const std::string word, const dpp::snowflake channel)
 {
-	if (auto_reply.contains(key_word)) {
-		return auto_reply[key_word].message;
+	for (const auto& [phrase, reply] : auto_reply)
+	{
+		if (word.find(phrase) != std::string::npos &&
+			reply.channel_id == channel)
+		{
+			return reply.message;
+		}
 	}
+
 	return std::string("");
 }
 

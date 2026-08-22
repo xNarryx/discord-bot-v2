@@ -81,7 +81,7 @@ public:
     void set_messages_count(int i);
     void add_messages_count(int i);
     void set_users_in_voice(int i);
-    std::string get_auto_reply_message(std::string key_word);
+    std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel);
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }
     std::vector<lvl_role> get_lvl_roles() const { return lvl_roles; }

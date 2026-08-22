@@ -555,7 +555,7 @@ void bot_thread_status(dpp::cluster& bot)
 						dpp::presence(
 							dpp::ps_dnd,
 							dpp::at_watching,
-							std::to_string(total_in_voice) + "В войсиках!"
+							std::to_string(total_in_voice) + " в войсиках!"
 						));
 				}else
 				{
@@ -583,7 +583,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 #pragma region Say
 	dpp::slashcommand say(
 		"say",
-		to_utf8(L"произнести в чате"),
+		to_utf8(L"Произнести в чате"),
 		bot_id
 	);
 	say.add_option(
@@ -621,8 +621,8 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		)
 		.add_choice(dpp::command_option_choice(to_utf8(L"Опыт в чате"), "xp_text"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Опыт в войсе"), "xp_voice"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Время мута"), "mute_time"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Количесто матершиницы"), "xp_swear"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Опыт без микрофона"), "mute_time"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Количество матершиницы"), "xp_swear"))
 
 	);
 	leaders.add_option(
@@ -632,9 +632,9 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 			to_utf8(L"Выберите длину списка"),
 			true
 		)
-		.add_choice(dpp::command_option_choice(to_utf8(L"10 пользователей"), "10"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"20 пользователей"), "20"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"30 пользователей"), "30"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"до 10 пользователей"), "10"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"до 20 пользователей"), "20"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"до 30 пользователей"), "30"))
 
 	);
 	cmds.push_back(leaders);
@@ -681,14 +681,15 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	// role_list
 	dpp::slashcommand role_list(
 		"role_list",
-		to_utf8(L"Выводит список ролей"),
+		to_utf8(L"Выводит список ролей за опыт"),
 		bot_id
 	);
 	cmds.push_back(role_list);
-
+#pragma endregion
+#pragma region remove_role
 	dpp::slashcommand remove_role(
 		"remove_role",
-		to_utf8(L"Убрать роль"),
+		to_utf8(L"Убрать роль из выдачи за опыт"),
 		bot_id
 	);
 	remove_role.add_option(
@@ -893,8 +894,8 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 			false
 		)
 		//.add_choice(dpp::command_option_choice(to_utf8(L"Женский голос 1 RSS (тестовый)"), "&hl=ru-ru&v=Olga"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Женсикй голос 1 - RSS"), "&hl=ru-ru&v=Marina"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Мужской голос 1 - RSS"), "&hl=ru-ru&v=Peter"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Женсикй голос 1 - RSS (Поддерживает озвучку в Голосовом чате)"), "&hl=ru-ru&v=Marina"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Мужской голос 1 - RSS (Поддерживает озвучку в Голосовом чате)"), "&hl=ru-ru&v=Peter"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Leda (Youthful) - Gemini"), "Gemini Leda"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Zephyr (Bright) - Gemini"), "Gemini Zephyr"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Enceladus (Breathy) - Gemini"), "Gemini Enceladus"))
@@ -961,10 +962,10 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		.set_auto_complete(true)
 	);
 	auto_reply.add_option(
-		dpp::command_option(dpp::co_string, "key_word", "Обязательно: Введите ключеное слово на которое будет ответ", false)
+		dpp::command_option(dpp::co_string, "key_word", "Обязательно: Введите ключевое слово на которое будет ответ", false)
 	);
 	auto_reply.add_option(
-		dpp::command_option(dpp::co_string, "message", "Обязательно: Введите которое будет отсылаться пользователю", false)
+		dpp::command_option(dpp::co_string, "message", "Обязательно: Введите сообщение которое будет отсылаться пользователю", false)
 	);
 	auto_reply.add_option(
 		dpp::command_option(dpp::co_channel, "channel", "Обязательно: Введите канал где будет работать ответ", false)
@@ -991,7 +992,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 #pragma region AI_answers
 	dpp::slashcommand ai_answers(
 		"ai_answers",
-		to_utf8(L"Редактировать память, и добавить базовый промпт для канала"),
+		to_utf8(L"Редактировать память, и добавить базовый промпт"),
 		bot_id
 	);
 	ai_answers.set_interaction_contexts({
@@ -1237,7 +1238,7 @@ void load_commads(dpp::cluster& bot) {
 				std::string message = std::get<std::string>(event.get_parameter("message"));
 				Guild& g = fm.get_guild(event.command.guild_id);
 				dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
-				g.add_auto_reply(key_word, message, channel);
+				g.add_auto_reply(to_lower_utf8(key_word), message, channel);
 				event.reply("Добавила авто ответ с **ключом**: " + key_word);
 				
 			}
@@ -1284,7 +1285,7 @@ void load_commads(dpp::cluster& bot) {
 			std::string text = std::get<std::string>(event.get_parameter("text"));
 			Guild& guild = fm.get_guild_r(guild_id);
 			if (v.is_in_voice_here(guild_id)) {
-				v.play(v.tts_create(text, guild.get_user(event.command.usr.id), std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
+				v.play(v.tts_create(replace_user_id_on_it_name(delete_https(text), guild_id), guild.get_user(event.command.usr.id), std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
 				event.reply(dpp::message(to_utf8(L"Озвучила ваш текст ") + text).set_flags(dpp::m_ephemeral));
 			}
 			else {
@@ -1684,7 +1685,7 @@ void load_commads(dpp::cluster& bot) {
 				return a.second > b.second;
 				});
 			int it = 0;
-			reply = to_utf8(L"## Лидеры по муту в голосе : \n");
+			reply = to_utf8(L"## Лидеры без микрофона в голосе : \n");
 			for (auto [user, exp] : users) {
 				if (lenght <= it) {
 					break;
@@ -2040,11 +2041,10 @@ int main()
 			auto s = it.second;
 		}
 		if (author_id != bot.me.id) {
-			for (auto word : split(lmessage)) {
-				if (g.is_auto_reply_word(word, channel_id)) {
-					event.reply(g.get_auto_reply_message(word));
+				if (g.is_auto_reply_word(lmessage, channel_id)) {
+					event.reply(g.get_auto_reply_message(lmessage, channel_id));
 				}
-			}
+			
 		}
 		
 		// gemini answers
@@ -2187,7 +2187,7 @@ int main()
 		User* u = g.get_user(author_id);
 		if (u->is_tts_enable()) {
 			if (v.is_in_voice_here(guild_id)) {
-				v.play(v.tts_create(message, u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
+				v.play(v.tts_create(replace_user_id_on_it_name(delete_https(message), guild_id), u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
 			}
 		}
 
@@ -2384,7 +2384,6 @@ int main()
 			}
 		}
 		if (message.substr(0, message.find(" ")) == "global_update_that" && author_id == owner_id) {
-			if (dpp::run_once<struct cmd_reg>()) {
 				std::vector<std::string> splited = split(message);
 				auto cmds = build_commands(bot.me.id);
 				std::string reply = "**commands updated:**\n";
@@ -2399,7 +2398,13 @@ int main()
 				}
 
 				event.reply(reply);
-			}
+			
+		}
+		if (message.substr(0, message.find(" ")) == "global_update_bulk" && author_id == owner_id)
+		{
+			auto cmds = build_commands(bot.me.id);
+			bot.global_bulk_command_create(cmds);
+			event.reply("**commands bulk updated!**");
 		}
 		if (message.substr(0, message.find(" ")) == "guild_delete" && author_id == owner_id) {
 			std::vector<std::string> splited = split(message);
