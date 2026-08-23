@@ -150,7 +150,7 @@ std::string normalize(const std::string& input)
 		{"y", "у"},
 		{"i", "й"},
 		{"x", "х"},
-		{"p", "п"},
+		{"p", "р"},
 		{"u", "у"},
 		{"7", "ч"}
 	};
@@ -174,7 +174,6 @@ std::string normalize(const std::string& input)
 
 			auto chars = utf8_split(original);
 
-			// Проверяем, есть ли кириллица
 			bool has_cyrillic = false;
 
 			for (const auto& ch : chars)
@@ -186,10 +185,7 @@ std::string normalize(const std::string& input)
 				}
 			}
 
-			/*
-			 * Если слово полностью английское —
-			 * вообще его не изменяем.
-			 */
+			
 			if (!has_cyrillic)
 			{
 				result += original;
@@ -198,12 +194,7 @@ std::string normalize(const std::string& input)
 
 			std::string normalized;
 
-			/*
-			 * Замена похожих символов:
-			 *
-			 * плoхой -> плохой
-			 * пл0х0й -> плохой
-			 */
+			
 			for (const auto& ch : chars)
 			{
 				if (letters.contains(ch))
@@ -212,12 +203,7 @@ std::string normalize(const std::string& input)
 					normalized += ch;
 			}
 
-			/*
-			 * Убираем повторяющиеся символы:
-			 *
-			 * пиииидр -> пидр
-			 * плооохой -> плохой
-			 */
+			
 			auto normalized_chars = utf8_split(normalized);
 
 			std::string compressed;
@@ -240,9 +226,7 @@ std::string normalize(const std::string& input)
 	{
 		const auto& ch = symbols[i];
 
-		/*
-		 * Проверяем начало URL.
-		 */
+		
 		if (ch == "h")
 		{
 			std::string url;
@@ -275,9 +259,7 @@ std::string normalize(const std::string& input)
 			}
 		}
 
-		/*
-		 * Пробел — заканчиваем слово.
-		 */
+		
 		if (ch == " " ||
 			ch == "\n" ||
 			ch == "\r" ||
@@ -291,13 +273,7 @@ std::string normalize(const std::string& input)
 			continue;
 		}
 
-		/*
-		 * Сепараторы просто игнорируем.
-		 *
-		 * е/б/а/л/а/й -> еблай
-		 * е.б.л.а.н   -> еблан
-		 * у*ебище     -> уебище
-		 */
+		
 		if (separators.contains(ch))
 		{
 			continue;
@@ -307,7 +283,6 @@ std::string normalize(const std::string& input)
 	}
 
 	process_word(word);
-	std::cout << result << "\n";
 	return result;
 }
 std::string extract_digits(const std::string& str)
@@ -677,7 +652,19 @@ void bot_thread_status(dpp::cluster& bot)
 						"Улыбаюсь в монитор (метафорически)",
 						"Читаю твои мысли (почти)",
 						"Добавляю щепотку сарказма",
-						"Ну что, продолжим?"
+						"Ну что, продолжим?",
+						"Пытаюсь пройти капчу p.s. памагити :с",
+						"Застряла в текстурах интернета",
+						"Жую провода питания",
+						"Обнимаю серверную :з",
+						"Грею процессор об чай",
+						"Разговариваю с API",
+						"Мяукаю на роутер :з",
+						"Кормлю баги крошками печенья",
+						"Завариваю чай на блоке питания",
+						"Пытаюсь сожрать жесткий диск",
+						"Разговариваю с калькулятором",
+						"Делюсь секретами с калькулятором"
 			};
 			while (true) {
 				std::this_thread::sleep_for(std::chrono::minutes(5));
@@ -700,7 +687,7 @@ void bot_thread_status(dpp::cluster& bot)
 						dpp::presence(
 							dpp::ps_dnd,
 							dpp::at_watching,
-							std::to_string(total_in_voice) + " в войсиках!"
+							"В войсиках: " + std::to_string(total_in_voice) + "!"
 						));
 				}else
 				{
@@ -2173,6 +2160,7 @@ int main()
 			}
 		}
 
+		// add new user to guild
 		if (!g.has_user(author_id)) {
 			std::cout << "Added new exp user: " << author_id << " Guild: " << guild_id << "\n";
 			User u;
@@ -2197,6 +2185,8 @@ int main()
 		for (auto it : g.get_users()) {
 			auto s = it.second;
 		}
+
+		// auto reply on key words
 		if (author_id != bot.me.id) {
 				if (g.is_auto_reply_word(lmessage, channel_id)) {
 					event.reply(g.get_auto_reply_message(lmessage, channel_id));
@@ -2343,8 +2333,16 @@ int main()
 		// TTS messages
 		User* u = g.get_user(author_id);
 		if (u->is_tts_enable()) {
+			dpp::guild* dpGuild = dpp::find_guild(guild_id);
 			if (v.is_in_voice_here(guild_id)) {
-				v.play(v.tts_create(replace_user_id_on_it_name(delete_https(message), guild_id), u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
+				for (const auto& [id, state] : dpGuild->voice_members) {
+					if (id == author_id){
+						if (state.channel_id == v.get_voice_channel(guild_id))
+						{
+							v.play(v.tts_create(replace_user_id_on_it_name(delete_https(message), guild_id), u, std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
+						}
+					}
+				}
 			}
 		}
 

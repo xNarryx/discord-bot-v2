@@ -31,6 +31,7 @@ public:
 		}
 
 	}
+	dpp::snowflake get_voice_channel(dpp::snowflake guild);
 	void add_api_keys(std::unordered_map <std::string, std::string> api_keys);
 	std::vector<uint8_t> to_pcmdata(std::string& way, float volume = 0.25);
 	bool join_voice(dpp::snowflake id_user, dpp::event_dispatch_t event, dpp::snowflake guild_id, dpp::snowflake id_channel = 0);

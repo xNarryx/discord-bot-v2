@@ -29,6 +29,16 @@ std::string escape_json(const std::string& input) {
 }
 
 
+dpp::snowflake VoiceManager::get_voice_channel(dpp::snowflake guild)
+{
+	if (voice_id_joined.contains(guild)) {
+		return voice_id_joined[guild];
+	}
+	else {
+		return 0;
+	}
+}
+
 void VoiceManager::add_api_keys(std::unordered_map <std::string, std::string> api_keys){
 	this->api_keys = api_keys;
 }
