@@ -415,10 +415,11 @@ std::string ask_gemini(const std::string prompt, std::string system_promp, std::
 std::string get_answer(const std::string prompt, std::string system_prompt, std::string token)
 {
 	std::vector<std::string> models = {
+		"gemini-3.5-flash-lite",
 		"gemini-3.1-flash-lite",
 		"gemini-2.5-flash-lite",
 		"gemini-2.5-flash",
-		"Gemma-4-31B"
+		"gemini-2.5-flash-lite"
 	};
 
 	bool has_answer = false;
@@ -1012,8 +1013,8 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 			to_utf8(L"Выберите действие"),
 			true
 		)
-		.add_choice(dpp::command_option_choice(to_utf8(L"Включить TTS"), "enable"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Выключить TTS"), "disable"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Включить TTS своих сообщений в голосовом чате"), "enable"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Выключить TTS своих сообщений в голосовом чате"), "disable"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Сменить голос"), "voice"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Озвучить текст"), "say"))
 	);
@@ -1242,8 +1243,8 @@ void load_commads(dpp::cluster& bot) {
 	handlers_cmd["ai_answers"] = [&](const dpp::slashcommand_t& event) {
 		std::string text = "";
 		dpp::snowflake channel;
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
+
+		Guild& gl = fm.get_guild_r(event.command.guild_id);
 		User* uu = gl.get_user(event.command.usr.id);
 		auto param = event.get_parameter("text");
 		if (param.index() != 0) {
@@ -1398,16 +1399,17 @@ void load_commads(dpp::cluster& bot) {
 			Guild& g = fm.get_guild(event.command.guild_id);
 			User* u = g.get_user(user_id);
 			u->tts_enable_change(true);
-			event.reply(dpp::message(to_utf8(L"Включила озвучку ваших сообщений.")).set_flags(dpp::m_ephemeral));
+			event.reply(dpp::message(to_utf8(L"Включила озвучку ваших сообщений в голосовом канале.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "disable") {
 			Guild& g = fm.get_guild(event.command.guild_id);
 			User* u = g.get_user(user_id);
 			u->tts_enable_change(false);
-			event.reply(dpp::message(to_utf8(L"Выключила озвучку ваших сообщений.")).set_flags(dpp::m_ephemeral));
+			event.reply(dpp::message(to_utf8(L"Выключила озвучку ваших сообщений в голосовом канале.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "voice") {
 			std::string voice_change = std::get<std::string>(event.get_parameter("voice_change"));
+			std::cout << "Voice change: " << voice_change << std::endl;
 			Guild& g = fm.get_guild(event.command.guild_id);
 			User* u = g.get_user(user_id);
 			u->tts_voice_change(voice_change);
@@ -1417,8 +1419,22 @@ void load_commads(dpp::cluster& bot) {
 			std::string text = std::get<std::string>(event.get_parameter("text"));
 			Guild& guild = fm.get_guild_r(guild_id);
 			if (v.is_in_voice_here(guild_id)) {
-				v.play(v.tts_create(replace_user_id_on_it_name(delete_https(text), guild_id), guild.get_user(event.command.usr.id), std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
-				event.reply(dpp::message(to_utf8(L"Озвучила ваш текст ") + text).set_flags(dpp::m_ephemeral));
+				dpp::guild* dpGuild = dpp::find_guild(guild_id);
+				for (const auto& [id, state] : dpGuild->voice_members) {
+					if (id == event.command.usr.id) {
+						if (state.channel_id == v.get_voice_channel(guild_id))
+						{
+							event.co_thinking(true);
+							v.play(v.tts_create(replace_user_id_on_it_name(delete_https(text), guild_id), guild.get_user(event.command.usr.id), std::to_string(guild_id), "D:\\DEV\\Disbot\\tts\\"), guild_id, event);
+							event.edit_response(
+								dpp::message(to_utf8(L"Озвучила ваш текст ") + text).set_flags(dpp::m_ephemeral)
+							);
+							
+							return;
+						}
+					}
+				}
+				event.reply(dpp::message(to_utf8(L"Не нашла вас в моем голосовом канале.")).set_flags(dpp::m_ephemeral));
 			}
 			else {
 				event.reply(dpp::message(to_utf8(L"Я не в голосовом канале.")).set_flags(dpp::m_ephemeral));
@@ -2051,6 +2067,7 @@ int main()
 				Guild& gl = fm.get_guild(guild_id);
 				User u;
 				u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
+				gl.add_admins_id(g.owner_id);
 				gl.add_user(u);
 
 				bot.message_create(
@@ -2164,10 +2181,17 @@ int main()
 		if (!g.has_user(author_id)) {
 			std::cout << "Added new exp user: " << author_id << " Guild: " << guild_id << "\n";
 			User u;
-			dpp::guild* guild = dpp::find_guild(guild_id);
-			if (guild_id != 0  && author_id == guild->owner_id) {
-				u.Create_user(author_id, 0,0,0, {}, false, true);
-				g.add_user(u);
+			
+			if (guild_id != 0) {
+				dpp::guild* guild = dpp::find_guild(guild_id);
+				if (author_id == guild->owner_id) {
+					u.Create_user(author_id, 0, 0, 0, {}, false, true);
+					g.add_user(u);
+				}
+				else {
+					u.Create_user(author_id);
+					g.add_user(u);
+				}
 			}
 			else {
 				u.Create_user(author_id);
@@ -2318,9 +2342,9 @@ int main()
 				)
 			);
 
-		if (history_message.size() > 300)
+		if (history_message.size() > 500)
 		{
-			history_message = history_message.substr(0, 300);
+			history_message = history_message.substr(0, 500);
 
 			size_t last_space = history_message.rfind(' ');
 
@@ -2572,11 +2596,49 @@ int main()
 			}
 		}
 		if (lmessage.substr(0, message.find(" ")) == "guild_name" && author_id == owner_id) {
-			std::vector<std::string> splited = split(message);
-			dpp::snowflake id = stoull(splited[1]);
-			dpp::guild* g = dpp::find_guild(id);
-			std::string name = g->name;
-			event.reply("Guild name: " + name);
+			try {
+				std::vector<std::string> splited = split(message);
+				dpp::snowflake id = stoull(splited[1]);
+				dpp::guild* g = dpp::find_guild(id);
+				std::string name = g->name;
+				event.reply("Guild name: " + name);
+			}
+			catch (const std::exception& e) {
+				event.reply("Error: " + std::string(e.what()));
+			}
+		}
+		if (lmessage.substr(0, message.find(" ")) == "guild_name_check_all" && author_id == owner_id) {
+			std::string reply = "Guilds:\n";
+
+			for (const auto& guild : fm.get_guilds_r()) {
+				try {
+					dpp::guild* g = dpp::find_guild(guild.first);
+
+					if (g) {
+						std::string name = g->name;
+
+						reply += ":green_square: Guild name/id: "
+							+ name + " "
+							+ std::to_string(guild.first)
+							+ "\n";
+					}
+					else {
+						reply += ":red_square: Guild name/id: "
+							+ std::to_string(guild.first)
+							+ " (guild not found)\n";
+					}
+				}
+				catch (const std::exception& e) {
+					std::cout << "Exception: " << e.what() << "\n";
+
+					reply += ":red_square: Guild name/id: "
+						+ std::to_string(guild.first)
+						+ "\n";
+				}
+			}
+
+			std::cout << reply << "\n";
+			event.reply(reply);
 		}
 	});
 

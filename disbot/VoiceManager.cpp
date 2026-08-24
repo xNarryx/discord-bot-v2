@@ -1,5 +1,25 @@
 #include "VoiceManager.h"
+extern "C" {
+#include <libavformat/avformat.h>
+#include <libavcodec/avcodec.h>
+#include <libavutil/avutil.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/samplefmt.h>
+#include <libswresample/swresample.h>
+}
 
+static std::string ffmpeg_error(int error)
+{
+	char buffer[AV_ERROR_MAX_STRING_SIZE];
+
+	av_strerror(
+		error,
+		buffer,
+		sizeof(buffer)
+	);
+
+	return std::string(buffer);
+}
 
 
 size_t WriteCallbackFile(void* contents, size_t size, size_t nmemb, void* userp) {
@@ -42,84 +62,549 @@ dpp::snowflake VoiceManager::get_voice_channel(dpp::snowflake guild)
 void VoiceManager::add_api_keys(std::unordered_map <std::string, std::string> api_keys){
 	this->api_keys = api_keys;
 }
-std::vector<uint8_t> VoiceManager::to_pcmdata(std::string& way, float volume)
+
+std::vector<uint8_t> VoiceManager::to_pcmdata(
+	const std::string& path,
+	float volume
+)
 {
-	std::vector<int16_t> pcm_samples; // сначала собираем в int16_t
+	constexpr int OUTPUT_SAMPLE_RATE = 48000;
+	constexpr int OUTPUT_CHANNELS = 2;
 
-	int err = 0;
-	mpg123_handle* mh = mpg123_new(NULL, &err);
-	if (!mh) return {};
+	std::vector<int16_t> pcm_samples;
 
-	if (mpg123_open(mh, way.c_str()) != MPG123_OK) {
-		mpg123_delete(mh);
+	AVFormatContext* format_ctx = nullptr;
+
+	// ---------------------------------------------------------
+	// 1. Открываем файл
+	// ---------------------------------------------------------
+
+	int ret = avformat_open_input(
+		&format_ctx,
+		path.c_str(),
+		nullptr,
+		nullptr
+	);
+
+	if (ret < 0)
+	{
+		char error[AV_ERROR_MAX_STRING_SIZE];
+
+		av_strerror(
+			ret,
+			error,
+			sizeof(error)
+		);
+
+		std::cerr
+			<< "Failed to open audio file: "
+			<< path
+			<< "\nFFmpeg error: "
+			<< error
+			<< '\n';
+
 		return {};
 	}
 
-	long rate;
-	int channels, encoding;
-	mpg123_getformat(mh, &rate, &channels, &encoding);
+	// ---------------------------------------------------------
+	// 2. Получаем информацию о потоках
+	// ---------------------------------------------------------
 
-	size_t buffer_size = mpg123_outblock(mh);
-	std::vector<unsigned char> buffer(buffer_size);
-	size_t done = 0;
+	ret = avformat_find_stream_info(
+		format_ctx,
+		nullptr
+	);
 
-	while (mpg123_read(mh, buffer.data(), buffer_size, &done) == MPG123_OK) {
-		int16_t* samples = reinterpret_cast<int16_t*>(buffer.data());
-		size_t sample_count = done / sizeof(int16_t);
+	if (ret < 0)
+	{
+		std::cerr
+			<< "Failed to find stream information\n";
 
-		for (size_t i = 0; i < sample_count; i++) {
-			float scaled = samples[i] * volume;
-			if (scaled > 32767.0f) scaled = 32767.0f;
-			if (scaled < -32768.0f) scaled = -32768.0f;
-			pcm_samples.push_back(static_cast<int16_t>(scaled));
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 3. Ищем аудиопоток
+	// ---------------------------------------------------------
+
+	int audio_stream_index = av_find_best_stream(
+		format_ctx,
+		AVMEDIA_TYPE_AUDIO,
+		-1,
+		-1,
+		nullptr,
+		0
+	);
+
+	if (audio_stream_index < 0)
+	{
+		std::cerr
+			<< "No audio stream found in file: "
+			<< path
+			<< '\n';
+
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	AVStream* audio_stream =
+		format_ctx->streams[audio_stream_index];
+
+	// ---------------------------------------------------------
+	// 4. Получаем decoder
+	// ---------------------------------------------------------
+
+	const AVCodec* codec =
+		avcodec_find_decoder(
+			audio_stream->codecpar->codec_id
+		);
+
+	if (!codec)
+	{
+		std::cerr
+			<< "Could not find decoder for audio stream\n";
+
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 5. Создаём codec context
+	// ---------------------------------------------------------
+
+	AVCodecContext* codec_ctx =
+		avcodec_alloc_context3(codec);
+
+	if (!codec_ctx)
+	{
+		std::cerr
+			<< "Could not allocate codec context\n";
+
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	ret = avcodec_parameters_to_context(
+		codec_ctx,
+		audio_stream->codecpar
+	);
+
+	if (ret < 0)
+	{
+		std::cerr
+			<< "Could not copy codec parameters\n";
+
+		avcodec_free_context(&codec_ctx);
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 6. Открываем decoder
+	// ---------------------------------------------------------
+
+	ret = avcodec_open2(
+		codec_ctx,
+		codec,
+		nullptr
+	);
+
+	if (ret < 0)
+	{
+		std::cerr
+			<< "Could not open audio decoder\n";
+
+		avcodec_free_context(&codec_ctx);
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 7. Создаём resampler
+	// ---------------------------------------------------------
+
+	AVChannelLayout output_layout =
+		AV_CHANNEL_LAYOUT_STEREO;
+
+	SwrContext* swr_ctx = nullptr;
+
+	ret = swr_alloc_set_opts2(
+		&swr_ctx,
+
+		// OUTPUT
+		&output_layout,
+		AV_SAMPLE_FMT_S16,
+		OUTPUT_SAMPLE_RATE,
+
+		// INPUT
+		&codec_ctx->ch_layout,
+		codec_ctx->sample_fmt,
+		codec_ctx->sample_rate,
+
+		0,
+		nullptr
+	);
+
+	if (ret < 0 || !swr_ctx)
+	{
+		std::cerr
+			<< "Could not create resampler\n";
+
+		swr_free(&swr_ctx);
+		avcodec_free_context(&codec_ctx);
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	ret = swr_init(swr_ctx);
+
+	if (ret < 0)
+	{
+		std::cerr
+			<< "Could not initialize resampler\n";
+
+		swr_free(&swr_ctx);
+		avcodec_free_context(&codec_ctx);
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 8. Создаём packet и frame
+	// ---------------------------------------------------------
+
+	AVPacket* packet = av_packet_alloc();
+	AVFrame* frame = av_frame_alloc();
+
+	if (!packet || !frame)
+	{
+		std::cerr
+			<< "Could not allocate FFmpeg packet/frame\n";
+
+		av_packet_free(&packet);
+		av_frame_free(&frame);
+
+		swr_free(&swr_ctx);
+		avcodec_free_context(&codec_ctx);
+		avformat_close_input(&format_ctx);
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 9. Читаем аудио
+	// ---------------------------------------------------------
+
+	while ((ret = av_read_frame(format_ctx, packet)) >= 0)
+	{
+		if (packet->stream_index != audio_stream_index)
+		{
+			av_packet_unref(packet);
+			continue;
+		}
+
+		ret = avcodec_send_packet(
+			codec_ctx,
+			packet
+		);
+
+		av_packet_unref(packet);
+
+		if (ret < 0)
+		{
+			std::cerr
+				<< "Error sending packet to decoder\n";
+
+			continue;
+		}
+
+		while (true)
+		{
+			ret = avcodec_receive_frame(
+				codec_ctx,
+				frame
+			);
+
+			if (ret == AVERROR(EAGAIN) ||
+				ret == AVERROR_EOF)
+			{
+				break;
+			}
+
+			if (ret < 0)
+			{
+				std::cerr
+					<< "Error receiving decoded frame\n";
+
+				break;
+			}
+
+			// -------------------------------------------------
+			// 10. Рассчитываем размер выходного buffer
+			// -------------------------------------------------
+
+			int output_samples =
+				av_rescale_rnd(
+					swr_get_delay(
+						swr_ctx,
+						codec_ctx->sample_rate
+					) + frame->nb_samples,
+
+					OUTPUT_SAMPLE_RATE,
+					codec_ctx->sample_rate,
+
+					AV_ROUND_UP
+				);
+
+			if (output_samples <= 0)
+				continue;
+
+			std::vector<int16_t> converted(
+				output_samples * OUTPUT_CHANNELS
+			);
+
+			uint8_t* output_data =
+				reinterpret_cast<uint8_t*>(
+					converted.data()
+					);
+
+			// -------------------------------------------------
+			// 11. Resample + convert → S16 stereo 48000 Hz
+			// -------------------------------------------------
+
+			int converted_samples =
+				swr_convert(
+					swr_ctx,
+
+					&output_data,
+					output_samples,
+
+					const_cast<const uint8_t**>(
+						frame->extended_data
+						),
+					frame->nb_samples
+				);
+
+			if (converted_samples < 0)
+			{
+				std::cerr
+					<< "Error while resampling audio\n";
+
+				continue;
+			}
+
+			converted.resize(
+				converted_samples * OUTPUT_CHANNELS
+			);
+
+			pcm_samples.insert(
+				pcm_samples.end(),
+				converted.begin(),
+				converted.end()
+			);
 		}
 	}
 
-	mpg123_close(mh);
-	mpg123_delete(mh);
+	// ---------------------------------------------------------
+	// 12. Flush decoder
+	// ---------------------------------------------------------
 
-	// Если частота != 48000, делаем ресемплинг через libsamplerate
-	if (rate != 48000) {
-		double src_ratio = 48000.0 / rate;
-		std::vector<int16_t> resampled((size_t)(pcm_samples.size() * src_ratio) + 1);
+	ret = avcodec_send_packet(
+		codec_ctx,
+		nullptr
+	);
 
-		SRC_DATA src_data;
-		src_data.data_in = reinterpret_cast<const float*>(pcm_samples.data());
-		src_data.input_frames = pcm_samples.size() / channels;
-		src_data.data_out = reinterpret_cast<float*>(resampled.data());
-		src_data.output_frames = resampled.size() / channels;
-		src_data.src_ratio = src_ratio;
-		src_data.end_of_input = 1;
+	if (ret >= 0)
+	{
+		while (true)
+		{
+			ret = avcodec_receive_frame(
+				codec_ctx,
+				frame
+			);
 
-		// конвертируем int16 -> float для SRC
-		std::vector<float> float_in(pcm_samples.size());
-		for (size_t i = 0; i < pcm_samples.size(); i++)
-			float_in[i] = pcm_samples[i] / 32768.0f;
+			if (ret == AVERROR_EOF ||
+				ret == AVERROR(EAGAIN))
+			{
+				break;
+			}
 
-		src_data.data_in = float_in.data();
-		int err = src_simple(&src_data, SRC_SINC_MEDIUM_QUALITY, channels);
-		if (err != 0) {
-			std::cerr << "Resampling error: " << src_strerror(err) << std::endl;
-			return {};
+			if (ret < 0)
+				break;
+
+			int output_samples =
+				av_rescale_rnd(
+					swr_get_delay(
+						swr_ctx,
+						codec_ctx->sample_rate
+					) + frame->nb_samples,
+
+					OUTPUT_SAMPLE_RATE,
+					codec_ctx->sample_rate,
+
+					AV_ROUND_UP
+				);
+
+			if (output_samples <= 0)
+				continue;
+
+			std::vector<int16_t> converted(
+				output_samples * OUTPUT_CHANNELS
+			);
+
+			uint8_t* output_data =
+				reinterpret_cast<uint8_t*>(
+					converted.data()
+					);
+
+			int converted_samples =
+				swr_convert(
+					swr_ctx,
+					&output_data,
+					output_samples,
+
+					const_cast<const uint8_t**>(
+						frame->extended_data
+						),
+					frame->nb_samples
+				);
+
+			if (converted_samples < 0)
+				continue;
+
+			converted.resize(
+				converted_samples * OUTPUT_CHANNELS
+			);
+
+			pcm_samples.insert(
+				pcm_samples.end(),
+				converted.begin(),
+				converted.end()
+			);
 		}
-
-		// конвертируем обратно в int16
-		for (size_t i = 0; i < src_data.output_frames_gen * channels; i++) {
-			float sample = src_data.data_out[i];
-			if (sample > 1.0f) sample = 1.0f;
-			if (sample < -1.0f) sample = -1.0f;
-			resampled[i] = static_cast<int16_t>(sample * 32767);
-		}
-
-		// возвращаем как uint8_t
-		std::vector<uint8_t> pcmdata(resampled.size() * sizeof(int16_t));
-		memcpy(pcmdata.data(), resampled.data(), pcmdata.size());
-		return pcmdata;
 	}
 
-	// если уже 48000, просто возвращаем как uint8_t
-	std::vector<uint8_t> pcmdata(pcm_samples.size() * sizeof(int16_t));
-	memcpy(pcmdata.data(), pcm_samples.data(), pcmdata.size());
+	// ---------------------------------------------------------
+	// 13. Flush resampler
+	// ---------------------------------------------------------
+
+	int delayed_samples =
+		av_rescale_rnd(
+			swr_get_delay(
+				swr_ctx,
+				codec_ctx->sample_rate
+			),
+
+			OUTPUT_SAMPLE_RATE,
+			codec_ctx->sample_rate,
+
+			AV_ROUND_UP
+		);
+
+	if (delayed_samples > 0)
+	{
+		std::vector<int16_t> converted(
+			delayed_samples * OUTPUT_CHANNELS
+		);
+
+		uint8_t* output_data =
+			reinterpret_cast<uint8_t*>(
+				converted.data()
+				);
+
+		int converted_samples =
+			swr_convert(
+				swr_ctx,
+				&output_data,
+				delayed_samples,
+
+				nullptr,
+				0
+			);
+
+		if (converted_samples > 0)
+		{
+			converted.resize(
+				converted_samples * OUTPUT_CHANNELS
+			);
+
+			pcm_samples.insert(
+				pcm_samples.end(),
+				converted.begin(),
+				converted.end()
+			);
+		}
+	}
+
+	// ---------------------------------------------------------
+	// 14. Освобождаем FFmpeg
+	// ---------------------------------------------------------
+
+	av_packet_free(&packet);
+	av_frame_free(&frame);
+
+	swr_free(&swr_ctx);
+
+	avcodec_free_context(&codec_ctx);
+
+	avformat_close_input(&format_ctx);
+
+	// ---------------------------------------------------------
+	// 15. Проверяем результат
+	// ---------------------------------------------------------
+
+	if (pcm_samples.empty())
+	{
+		std::cerr
+			<< "No PCM samples decoded from: "
+			<< path
+			<< '\n';
+
+		return {};
+	}
+
+	// ---------------------------------------------------------
+	// 16. Volume
+	// ---------------------------------------------------------
+
+	for (int16_t& sample : pcm_samples)
+	{
+		float value =
+			static_cast<float>(sample) * volume;
+
+		value = std::clamp(
+			value,
+			-32768.0f,
+			32767.0f
+		);
+
+		sample =
+			static_cast<int16_t>(value);
+	}
+
+	// ---------------------------------------------------------
+	// 17. int16_t → uint8_t
+	// ---------------------------------------------------------
+
+	std::vector<uint8_t> pcmdata(
+		pcm_samples.size() * sizeof(int16_t)
+	);
+
+	std::memcpy(
+		pcmdata.data(),
+		pcm_samples.data(),
+		pcmdata.size()
+	);
+
 	return pcmdata;
 }
 
@@ -173,9 +658,12 @@ bool VoiceManager::play(std::string way, dpp::snowflake guild, dpp::event_dispat
 {
 	dpp::voiceconn* v = event.from()->get_voice(guild);
 	if (v && v->is_ready()) {
-		std::vector<uint8_t> pcmdata = to_pcmdata(way);
-		v->voiceclient->send_audio_raw((uint16_t*)pcmdata.data(), pcmdata.size());
-		return true;
+			std::vector<uint8_t> pcmdata = to_pcmdata(way, volume);
+			std::cout << "PCM size: "
+				<< pcmdata.size()
+				<< " bytes\n";
+			v->voiceclient->send_audio_raw((uint16_t*)pcmdata.data(), pcmdata.size());
+			return true;
 	}
 
 	return false;

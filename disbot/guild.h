@@ -41,7 +41,7 @@ private:
     bool anti_swears;
 public:
     void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
-        std::unordered_set<dpp::snowflake> admin_ids = { 879386342931451914 },
+        std::unordered_set<dpp::snowflake> admin_ids = {},
         std::unordered_set<dpp::snowflake> banned_channels = {},
         std::unordered_set<dpp::snowflake> tts_channels = {},
         std::unordered_map<dpp::snowflake, User> users = {},
