@@ -127,6 +127,18 @@ std::vector<std::string> utf8_split(const std::string& str)
 
 	return result;
 }
+std::vector<std::string> split_max(const std::string& str, const int& max_size = 2000) {
+	std::vector <std::string> segments;
+	for (const auto& segment : split(str)) {
+		if (segments.empty() || segments.back().size() + segment.size() + 1 > max_size) {
+			segments.push_back(segment);
+		}
+		else {
+			segments.back() += " " + segment;
+		}
+	}
+	return segments;
+}
 bool is_cyrillic(const std::string& ch)
 {
 	if (ch.size() != 2)
@@ -1163,10 +1175,32 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	);
 
 	cmds.push_back(ai_answers);
+#pragma region help
+	dpp::slashcommand help(
+		"help",
+		to_utf8(L"Помощь по командам"),
+		bot_id
+	);
+	help.add_option(
+		dpp::command_option(
+			dpp::co_string,
+			"type",
+			to_utf8(L"Выберите действие"),
+			true
+		)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Команды"), "commands"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Старт"), "start"))
+	);
+	cmds.push_back(help);
+#pragma endregion
+
+
 
 	return cmds;
 }
-#pragma endregion
+
+
+
 std::vector<dpp::slashcommand> build_commands_local(const dpp::snowflake bot_id) { // commands for local use
 	std::vector<dpp::slashcommand> cmds;
 
@@ -1211,27 +1245,27 @@ void load_commads(dpp::cluster& bot) {
 			if (param.index() != 0) {
 				text = std::get<std::string>(event.get_parameter("text"));
 			}
-				dpp::command_interaction cmd_data = std::get<dpp::command_interaction>(event.command.data);
+			dpp::command_interaction cmd_data = std::get<dpp::command_interaction>(event.command.data);
 
-				param = event.get_parameter("attachment");
-				if (param.index() != 0) {
-					dpp::snowflake file_id = std::get<dpp::snowflake>(event.get_parameter("attachment"));
-					auto iter = event.command.resolved.attachments.find(file_id);
-					if (iter != event.command.resolved.attachments.end()) {
-						const dpp::attachment& att = iter->second;
-						bot.message_create(dpp::message(event.command.channel_id, text + " " + att.url));
-						event.reply(
-							dpp::message(to_utf8(L"Отправила")).set_flags(dpp::m_ephemeral)
-						);
-					}
-				}
-				else {
+			param = event.get_parameter("attachment");
+			if (param.index() != 0) {
+				dpp::snowflake file_id = std::get<dpp::snowflake>(event.get_parameter("attachment"));
+				auto iter = event.command.resolved.attachments.find(file_id);
+				if (iter != event.command.resolved.attachments.end()) {
+					const dpp::attachment& att = iter->second;
+					bot.message_create(dpp::message(event.command.channel_id, text + " " + att.url));
 					event.reply(
 						dpp::message(to_utf8(L"Отправила")).set_flags(dpp::m_ephemeral)
 					);
-					bot.message_create(dpp::message(event.command.channel_id, text));
 				}
-			
+			}
+			else {
+				event.reply(
+					dpp::message(to_utf8(L"Отправила")).set_flags(dpp::m_ephemeral)
+				);
+				bot.message_create(dpp::message(event.command.channel_id, text));
+			}
+
 		}
 		else {
 			event.reply(
@@ -1239,6 +1273,42 @@ void load_commads(dpp::cluster& bot) {
 			);
 		}
 		};
+
+	handlers_cmd["help"] = [&](const dpp::slashcommand_t& event) {
+		if (std::get<std::string>(event.get_parameter("type")) == "commands") {
+			bot.message_get(1519829979939082354, 1519792393749008434, [&bot, event](const dpp::confirmation_callback_t& cc) {
+				if (cc.is_error())
+				{
+					std::cout << "Error: " << cc.get_error().message << std::endl;
+					event.reply(dpp::message(to_utf8(L"Что-то случилось не так. Используйте /report_issue")).set_flags(dpp::m_ephemeral));
+				}
+				else {
+
+					dpp::message msg = std::get<dpp::message>(cc.value);
+					msg.channel_id = event.command.channel_id;
+
+					event.reply(msg.set_flags(dpp::m_ephemeral));
+				}
+				});
+		}
+		else if (std::get<std::string>(event.get_parameter("type")) == "start") {
+			bot.message_get(1541625115543081013, 1541620958987554966, [&bot, event](const dpp::confirmation_callback_t& cc) {
+				if (cc.is_error())
+				{
+					std::cout << "Error: " << cc.get_error().message << std::endl;
+					event.reply(dpp::message(to_utf8(L"Что-то случилось не так. Используйте /report_issue")).set_flags(dpp::m_ephemeral));
+				}
+				else {
+
+					dpp::message msg = std::get<dpp::message>(cc.value);
+					msg.channel_id = event.command.channel_id;
+
+					event.reply(msg.set_flags(dpp::m_ephemeral));
+				}
+				});
+		}
+			
+	};
 
 	handlers_cmd["ai_answers"] = [&](const dpp::slashcommand_t& event) {
 		std::string text = "";
@@ -2073,7 +2143,13 @@ int main()
 				bot.message_create(
 					dpp::message(1537540872885903400, "## :green_square: Bot joined: " + g.name + "\n Guild_ID: " + std::to_string(guild_id) + "\n Owner ID: " + std::to_string(g.owner_id))
 				);
-
+				dpp::guild guild = event.created;
+				if (guild.system_channel_id)
+				{
+					bot.message_create(
+						dpp::message(guild.system_channel_id, "## Спасибо что выбрали меня! Права администратора выданы владельцу сервера: <@" + std::to_string(guild.owner_id) + "> \n В случае проблем или вопросов, обращайтесь на сервер поддержки! \n **Для получения дополнительной информации, пожалуйста, ознакомьтесь с документацией /help.**")
+					);
+				}
 				SetColor(12);
 				std::cout << "Bot joined guild: "
 					<< g.name << " (" << g.id << ")\n";
