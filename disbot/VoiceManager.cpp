@@ -75,10 +75,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 
 	AVFormatContext* format_ctx = nullptr;
 
-	// ---------------------------------------------------------
-	// 1. Открываем файл
-	// ---------------------------------------------------------
-
 	int ret = avformat_open_input(
 		&format_ctx,
 		path.c_str(),
@@ -106,9 +102,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 2. Получаем информацию о потоках
-	// ---------------------------------------------------------
 
 	ret = avformat_find_stream_info(
 		format_ctx,
@@ -125,9 +118,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 3. Ищем аудиопоток
-	// ---------------------------------------------------------
 
 	int audio_stream_index = av_find_best_stream(
 		format_ctx,
@@ -153,9 +143,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 	AVStream* audio_stream =
 		format_ctx->streams[audio_stream_index];
 
-	// ---------------------------------------------------------
-	// 4. Получаем decoder
-	// ---------------------------------------------------------
 
 	const AVCodec* codec =
 		avcodec_find_decoder(
@@ -172,9 +159,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 5. Создаём codec context
-	// ---------------------------------------------------------
 
 	AVCodecContext* codec_ctx =
 		avcodec_alloc_context3(codec);
@@ -205,9 +189,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 6. Открываем decoder
-	// ---------------------------------------------------------
 
 	ret = avcodec_open2(
 		codec_ctx,
@@ -226,9 +207,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 7. Создаём resampler
-	// ---------------------------------------------------------
 
 	AVChannelLayout output_layout =
 		AV_CHANNEL_LAYOUT_STEREO;
@@ -278,9 +256,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 8. Создаём packet и frame
-	// ---------------------------------------------------------
 
 	AVPacket* packet = av_packet_alloc();
 	AVFrame* frame = av_frame_alloc();
@@ -300,9 +275,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 9. Читаем аудио
-	// ---------------------------------------------------------
 
 	while ((ret = av_read_frame(format_ctx, packet)) >= 0)
 	{
@@ -348,9 +320,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 				break;
 			}
 
-			// -------------------------------------------------
-			// 10. Рассчитываем размер выходного buffer
-			// -------------------------------------------------
 
 			int output_samples =
 				av_rescale_rnd(
@@ -377,9 +346,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 					converted.data()
 					);
 
-			// -------------------------------------------------
-			// 11. Resample + convert → S16 stereo 48000 Hz
-			// -------------------------------------------------
 
 			int converted_samples =
 				swr_convert(
@@ -414,9 +380,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		}
 	}
 
-	// ---------------------------------------------------------
-	// 12. Flush decoder
-	// ---------------------------------------------------------
 
 	ret = avcodec_send_packet(
 		codec_ctx,
@@ -493,9 +456,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		}
 	}
 
-	// ---------------------------------------------------------
-	// 13. Flush resampler
-	// ---------------------------------------------------------
 
 	int delayed_samples =
 		av_rescale_rnd(
@@ -545,10 +505,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		}
 	}
 
-	// ---------------------------------------------------------
-	// 14. Освобождаем FFmpeg
-	// ---------------------------------------------------------
-
 	av_packet_free(&packet);
 	av_frame_free(&frame);
 
@@ -558,9 +514,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 
 	avformat_close_input(&format_ctx);
 
-	// ---------------------------------------------------------
-	// 15. Проверяем результат
-	// ---------------------------------------------------------
 
 	if (pcm_samples.empty())
 	{
@@ -572,9 +525,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		return {};
 	}
 
-	// ---------------------------------------------------------
-	// 16. Volume
-	// ---------------------------------------------------------
 
 	for (int16_t& sample : pcm_samples)
 	{
@@ -591,9 +541,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 			static_cast<int16_t>(value);
 	}
 
-	// ---------------------------------------------------------
-	// 17. int16_t → uint8_t
-	// ---------------------------------------------------------
 
 	std::vector<uint8_t> pcmdata(
 		pcm_samples.size() * sizeof(int16_t)

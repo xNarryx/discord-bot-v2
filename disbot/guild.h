@@ -38,6 +38,7 @@ private:
     std::vector<lvl_role> lvl_roles;
     int messages_count;
     int users_in_voices;
+    std::chrono::system_clock::time_point last_time_active;
     bool anti_swears;
 public:
     void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
@@ -48,6 +49,7 @@ public:
         std::unordered_set<std::string> banned_words = {},
         std::unordered_map<std::string, AutoReplyData> auto_reply = {},
         std::vector<lvl_role> lvl_roles = {},
+        std::chrono::system_clock::time_point last_time_active = std::chrono::system_clock::now(),
         int messages_count = 0,
         int users_in_voices = 0,
         bool anti_swears = false);
@@ -81,12 +83,15 @@ public:
     void set_messages_count(int i);
     void add_messages_count(int i);
     void set_users_in_voice(int i);
+    void update_last_active();
+
     std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel);
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }
     std::vector<lvl_role> get_lvl_roles() const { return lvl_roles; }
 	int get_messages_count() const { return messages_count; }
 	int get_users_in_voice() const { return users_in_voices; }
+    std::chrono::system_clock::time_point get_last_time_active() const { return last_time_active; }
 
 	User* get_user(dpp::snowflake user_id);
 	dpp::snowflake get_id() const { return guild_id; }
@@ -168,6 +173,9 @@ public:
         j["anti_swears"] = anti_swears;
 		// messages_count
 		j["messages_count"] = messages_count;
+		// last_time_active
+		j["last_time_active"] = std::chrono::duration_cast<std::chrono::milliseconds>(last_time_active.time_since_epoch()).count();
+
         return j;
     }
 
@@ -256,6 +264,12 @@ public:
         g.anti_swears = j.value("anti_swears", false);
 		// messages_count
         g.messages_count = j.value("messages_count", 0);
+		//last_time_active
+		if (j.contains("last_time_active") && j["last_time_active"].is_number_integer()) {
+			auto ms = std::chrono::milliseconds(j["last_time_active"].get<int64_t>());
+			g.last_time_active = std::chrono::system_clock::time_point(ms);
+		}
+
 
         return g;
     }
