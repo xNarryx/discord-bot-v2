@@ -160,19 +160,9 @@ int User::get_user_exp_swears() const
 	return exp_swears;
 }
 
-std::unordered_map<int, std::string> User::get_warns()
+std::unordered_map<int, std::string> User::get_warns() const
 {
 	return std::unordered_map<int, std::string>(warns);
-}
-
-bool User::is_banned()
-{
-	return banned;
-}
-
-bool User::is_admin()
-{
-	return admin;
 }
 
 void User::add_role(dpp::snowflake id)

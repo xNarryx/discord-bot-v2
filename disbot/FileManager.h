@@ -14,22 +14,46 @@ namespace fs = std::filesystem;
 
 class file_manager {
 private:
-    std::unordered_map<dpp::snowflake, Guild> guilds;
+    std::unordered_map<dpp::snowflake, std::shared_ptr<Guild>> guilds;
     mutable std::shared_mutex guilds_mutex;
+    mutable std::shared_mutex api_keys_mutex;
     std::unordered_map <std::string, std::string> api_keys;
 
 public:
     void load_api_keys(const std::string path);
     std::string get_api_key(const std::string api);
     std::unordered_map <std::string, std::string> get_all_api_keys();
-    void add_guild(const Guild& g);
 
 
-    std::unordered_map<dpp::snowflake, Guild>& get_guilds();
-    std::unordered_map<dpp::snowflake, Guild> get_guilds_r() const;
-    Guild& get_guild(const dpp::snowflake& guild_id);
-    Guild& get_guild_r(const dpp::snowflake& guild_id);
-    bool find_guild(dpp::snowflake& guild_id);
+    std::shared_ptr<Guild> get_guild(const dpp::snowflake id);
+    std::vector<std::shared_ptr<Guild>> get_guilds();
+    std::shared_ptr<Guild> find_guild(const dpp::snowflake id)
+    {
+        std::shared_lock lock(guilds_mutex);
+        auto it = guilds.find(id);
+        if (it != guilds.end()) {
+            return it->second;
+        }
+        return nullptr;
+    }
+    void add_guild(std::shared_ptr<Guild> g);
+    template<typename Func>
+    auto modify_guild(const dpp::snowflake& id, Func&& func) {
+        auto g = get_guild(id); 
+        return g->modify(std::forward<Func>(func));
+    }
+
+    template<typename Func>
+    auto read_guild(const dpp::snowflake& id, Func&& func)
+        -> std::optional<std::invoke_result_t<Func, const Guild&>>
+    {
+        auto g = find_guild(id);
+        if (!g) {
+            return std::nullopt;
+        }
+        return g->read(std::forward<Func>(func));
+    }
+	
 
     bool delete_guild_for_now(dpp::snowflake& guild_id);
     bool delete_guild(dpp::snowflake& guild_id, const std::string& folder_path);

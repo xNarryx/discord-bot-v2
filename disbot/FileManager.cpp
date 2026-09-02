@@ -2,7 +2,6 @@
 #include <fstream>
 #include <iostream>
 
-Guild gl;
 
 void SetColorr(int color = 7) {
     SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
@@ -10,7 +9,7 @@ void SetColorr(int color = 7) {
 
 void file_manager::load_api_keys(const std::string path)
 {
-    std::shared_lock lock(guilds_mutex);
+    std::unique_lock lock(api_keys_mutex);
     std::ifstream file(path);
     nlohmann::json j;
     file >> j;
@@ -36,7 +35,7 @@ void file_manager::load_api_keys(const std::string path)
 
 std::string file_manager::get_api_key(const std::string api)
 {
-    std::shared_lock lock(guilds_mutex);
+    std::shared_lock lock(api_keys_mutex);
     if (api_keys.contains(api)) {
 
         return std::string(api_keys[api]);
@@ -50,64 +49,51 @@ std::string file_manager::get_api_key(const std::string api)
 
 std::unordered_map<std::string, std::string> file_manager::get_all_api_keys()
 {
-    std::shared_lock lock(guilds_mutex);
+    std::shared_lock lock(api_keys_mutex);
     return std::unordered_map<std::string, std::string>(api_keys);
 }
 
-void file_manager::add_guild(const Guild& g)
+std::shared_ptr<Guild> file_manager::get_guild(const dpp::snowflake id)
 {
-    std::unique_lock lock(guilds_mutex);
-    guilds[g.get_id()] = g;
-}
-
-std::unordered_map<dpp::snowflake, Guild>& file_manager::get_guilds()
-{
-  
-    std::unique_lock lock(guilds_mutex);
-    return guilds;
-}
-
-std::unordered_map<dpp::snowflake, Guild> file_manager::get_guilds_r() const
-{
- 
-    std::shared_lock lock(guilds_mutex);
-    return guilds;
-}
-
-Guild& file_manager::get_guild(const dpp::snowflake& guild_id)
-{
-    std::unique_lock lock(guilds_mutex);
-
-    if (guilds.contains(guild_id)) {
-        return guilds.at(guild_id);
+    {
+        std::shared_lock lock(guilds_mutex);
+        auto it = guilds.find(id);
+        if (it != guilds.end()) {
+            return it->second;
+        }
     }
-
-    
-    gl.create_guild(guild_id);
-    guilds[guild_id] = gl;
-
-    return guilds[guild_id];
-}
-
-Guild& file_manager::get_guild_r(const dpp::snowflake& guild_id)
-{
-    std::shared_lock lock(guilds_mutex);
-
-    if (guilds.contains(guild_id)) {
-        return guilds.at(guild_id);
+    std::unique_lock lock(guilds_mutex);
+    auto it = guilds.find(id);
+    if (it != guilds.end()) {
+        return it->second;
     }
-
+    auto g = std::make_shared<Guild>();
+    g->create_guild(id);
+    guilds[id] = g;
+    return g;
 }
 
-bool file_manager::find_guild(dpp::snowflake& guild_id)
+std::vector<std::shared_ptr<Guild>> file_manager::get_guilds()
 {
     std::shared_lock lock(guilds_mutex);
-    return guilds.contains(guild_id);
+    std::vector<std::shared_ptr<Guild>> result;
+    for (const auto& [id, guild] : guilds) {
+        result.push_back(guild);
+    }
+    return result;
 }
+
+void file_manager::add_guild(std::shared_ptr<Guild> g)
+{
+    std::unique_lock lock(guilds_mutex);
+    guilds[g->get_id()] = std::move(g);
+}
+
+
 
 bool file_manager::delete_guild_for_now(dpp::snowflake& guild_id)
 {
-    std::shared_lock lock(guilds_mutex);
+    std::unique_lock lock(guilds_mutex);
 
     if (guilds.contains(guild_id)) {
         guilds.erase(guild_id);
@@ -120,7 +106,7 @@ bool file_manager::delete_guild_for_now(dpp::snowflake& guild_id)
 
 bool file_manager::delete_guild(dpp::snowflake& guild_id, const std::string& folder_path)
 {
-    std::shared_lock lock(guilds_mutex);
+    std::unique_lock lock(guilds_mutex);
     if (guilds.contains(guild_id)) {
         guilds.erase(guild_id);
         if (std::filesystem::remove(folder_path + std::to_string(guild_id) + ".json")) {
@@ -138,22 +124,26 @@ bool file_manager::delete_guild(dpp::snowflake& guild_id, const std::string& fol
 
 bool file_manager::save_guilds(const std::string& folder_path)
 {
-    std::shared_lock lock(guilds_mutex);
-
-    for (const auto& [gid, guild] : guilds)
+    std::vector<std::shared_ptr<Guild>> snapshot;
     {
-        std::string path = folder_path + std::to_string(gid) + "dump.json";
-        std::ofstream file(path);
-
-        if (!file.is_open()) {
-            std::cout << "Cannot open file skipping: " << path << "\n";
+        std::shared_lock lock(guilds_mutex);
+        snapshot.reserve(guilds.size());
+        for (const auto& [gid, guild] : guilds) {
+            snapshot.push_back(guild);
         }
+    }
 
-        file << guild.to_json().dump(0);
+    for (const auto& guild : snapshot) {
+        std::string path = folder_path + std::to_string(guild->get_id()) + "dump.json";
+        std::ofstream file(path);
+        if (!file.is_open()) { std::cout << "Cannot open file skipping: " << path << "\n"; continue; }
+
+        nlohmann::json j = guild->read([](const Guild& g) { return g.to_json(); });
+        file << j.dump(0);
         file.close();
+		auto gid = guild->get_id();
 
         std::ifstream file1(path);
-        nlohmann::json j;
         dpp::snowflake gid1 = 1;
         try {
             file1 >> j;

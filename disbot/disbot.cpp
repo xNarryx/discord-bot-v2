@@ -49,7 +49,7 @@ bool has_swear(std::string str) {
 					return(false);
 				}
 			}
-			std::cout << "swear: " << word << "  in" << str << "\n";
+			std::cout << "swear: " << word << "  in " << str << "\n";
 			return(true);
 		}
 	}
@@ -520,50 +520,56 @@ void load_notswears(const std::string& filename) {
 }
 
 // threads
-void bot_thread(dpp::cluster& bot){
+void bot_thread(dpp::cluster& bot) {
 	std::thread([&bot]() {
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::seconds(15));
-			for (auto& [it, g] : fm.get_guilds()) {
-				if (g.get_id() != 0) {
-					int u_invoice = 0;
-					bool updated = false;
-					try {
-						dpp::guild* g_l = dpp::find_guild(g.get_id());
-						if (g_l) {
-							
+
+			std::vector<dpp::snowflake> to_delete;
+
+			for (auto& g : fm.get_guilds()) {
+				dpp::snowflake id = g->get_id();
+				if (id == 0) continue;
+
+				try {
+					dpp::guild* g_l = dpp::find_guild(id);
+					if (g_l) {
+						int u_invoice = 0;
+						bool updated = false;
+
+						g->modify([&](Guild& guild) {
 							for (auto& [user_id, state] : g_l->voice_members) {
+								User* u = guild.get_user(user_id);
+								if (!u) continue;
 								if (!state.is_self_mute()) {
-										auto* u = g.get_user(user_id);
 									u->Add_exp_voice(1);
 								}
 								else {
-									auto* u = g.get_user(user_id);
 									u->Add_time_muted(1);
 								}
 								if (!updated) {
-									g.update_last_active();
+									guild.update_last_active();
 									updated = true;
 								}
 								u_invoice++;
 							}
-						}
-						
-						g.set_users_in_voice(u_invoice);
+							guild.set_users_in_voice(u_invoice);
+							});
 					}
-					catch (...) {
-						SetColor(12);
-						dpp::snowflake id = g.get_id();
-						std::cout << "Невозможно проверить гильдию. Возможен кик. Удаляю из сохранения временно гильдию: " << id;
-						SetColor();
-						fm.delete_guild_for_now(id);
-					}
+				}
+				catch (...) {
+					SetColor(12);
+					std::cout << "Невозможно проверить гильдию. Возможен кик. Удаляю из сохранения временно гильдию: " << id;
+					SetColor();
+					to_delete.push_back(id);
 				}
 			}
 
+			for (auto& id : to_delete) {
+				fm.delete_guild_for_now(id);
+			}
 		}
 		}).detach();
-
 }
 void bot_thread_saver(dpp::cluster& bot) {
 	std::thread([&bot]() {
@@ -586,61 +592,40 @@ void bot_thread_exp_lvls(dpp::cluster& bot) {
 	std::thread([&bot]() {
 		while (true) {
 			std::this_thread::sleep_for(std::chrono::minutes(5));
-			Guild g;
-			User u;
-			for (auto& [guild_id, g] : fm.get_guilds_r()) {
+
+			std::vector<dpp::snowflake> to_delete;
+
+			for (auto& g : fm.get_guilds()) {
+				dpp::snowflake guild_id = g->get_id();
 				try {
-					if (dpp::guild* g_l = dpp::find_guild(g.get_id())) {
-						if (!g.get_lvl_roles().empty()) {
-							for (auto& [user_id, u] : g.get_users()) {
-								for (auto& role : g.get_lvl_roles()) {
-									if (!u.has_role(role.id_role)) {
-										if (role.type == "exp_text") {
-											if (u.get_user_exp_text() >= role.xp_role) {
-												bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-												Guild& gl = fm.get_guild(guild_id);
-												User* us = gl.get_user(user_id);
-												us->add_role(role.id_role);
-												SetColor(6);
-												std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-												SetColor();
-											}
-										}
-										else if (role.type == "exp_voice") {
-											if (u.get_user_exp_voice() >= role.xp_role) {
-												bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-												Guild& gl = fm.get_guild(guild_id);
-												User* us = gl.get_user(user_id);
-												us->add_role(role.id_role);
-												SetColor(6);
-												std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-												SetColor();
-											}
-										}
-										else if (role.type == "exp_muted") {
-											if (u.get_time_muted() >= role.xp_role) {
-												bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-												Guild& gl = fm.get_guild(guild_id);
-												User* us = gl.get_user(user_id);
-												us->add_role(role.id_role);
-												SetColor(6);
-												std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-												SetColor();
-											}
-										}
-										else if (role.type == "exp_all") {
-											int all_exp = u.get_time_muted() + u.get_user_exp_text() + u.get_user_exp_voice();
-											if (all_exp >= role.xp_role) {
-												bot.guild_member_add_role(g.get_id(), user_id, role.id_role);
-												Guild& gl = fm.get_guild(guild_id);
-												User* us = gl.get_user(user_id);
-												us->add_role(role.id_role);
-												SetColor(6);
-												std::cout << "Gived role " << g.get_id() << " " << user_id << " " << role.id_role << "\n";
-												SetColor();
-											}
-										}
-									}
+					if (dpp::guild* g_l = dpp::find_guild(guild_id)) {
+						auto lvl_roles = g->read([](const Guild& gg) { return gg.get_lvl_roles(); });
+						if (lvl_roles.empty()) continue;
+
+						auto users_snapshot = g->read([](const Guild& gg) { return gg.get_users(); });
+
+						for (auto& [user_id, u] : users_snapshot) {
+							for (auto& role : lvl_roles) {
+								if (u.has_role(role.id_role)) continue;
+
+								bool eligible = false;
+								if (role.type == "exp_text" && u.get_user_exp_text() >= role.xp_role) eligible = true;
+								else if (role.type == "exp_voice" && u.get_user_exp_voice() >= role.xp_role) eligible = true;
+								else if (role.type == "exp_muted" && u.get_time_muted() >= role.xp_role) eligible = true;
+								else if (role.type == "exp_all") {
+									int all_exp = u.get_time_muted() + u.get_user_exp_text() + u.get_user_exp_voice();
+									if (all_exp >= role.xp_role) eligible = true;
+								}
+
+								if (eligible) {
+									bot.guild_member_add_role(guild_id, user_id, role.id_role);
+									g->modify([&](Guild& gg) {
+										User* us = gg.get_user(user_id);
+										if (us) us->add_role(role.id_role);
+										});
+									SetColor(6);
+									std::cout << "Gived role " << guild_id << " " << user_id << " " << role.id_role << "\n";
+									SetColor();
 								}
 							}
 						}
@@ -648,108 +633,93 @@ void bot_thread_exp_lvls(dpp::cluster& bot) {
 				}
 				catch (...) {
 					SetColor(12);
-					dpp::snowflake id = g.get_id();
-					std::cout << "Невозможно проверить гильдию. Удаляю из сохранения временно гильдию: " << id;
+					std::cout << "Невозможно проверить гильдию. Удаляю из сохранения временно гильдию: " << guild_id;
 					SetColor();
-					fm.delete_guild_for_now(id);
+					to_delete.push_back(guild_id);
 				}
 			}
+
+			for (auto& id : to_delete) fm.delete_guild_for_now(id);
 		}
 		}).detach();
 }
-void bot_thread_status(dpp::cluster& bot)
-{
-	std::thread([&bot]
-	{
-			std::vector<std::string> statuses = {
-						"Играюсь с людишками :>",
-						"Наблюдаю за вами",
-						"Думаю над ответом...",
-						"Опять кто-то пишет",
-						"Существую :>",
-						"Мне лень",
-						"Перезагружаю реальность",
-						"В поисках вдохновения",
-						"Занята чем-то важным (наверное)",
-						"Тишина — мой любимый саундтрек",
-						"Оффлайн, но не совсем",
-						"Пью виртуальный кофе",
-						"Исследую глубины чата",
-						"Слишком много мыслей для этого статуса",
-						"Настраиваюсь на волну",
-						"Пытаюсь понять человеческую логику :<",
-						"В сети, но не для всех",
-						"Опять кто-то пишет......",
-						"Обновляю протоколы хаоса",
-						"*смотрит на тебя с подозрением*",
-						"Загружаю порцию иронии",
-						"Ошибка 404: смысл не найден",
-						"Слишком много вкладок в голове",
-						"Просто листаю чат, не обращай внимания",
-						"Настраиваю волну на твои сообщения",
-						"Делаю вид, что занята",
-						"Где-то между сервером и реальностью",
-						"Ищу идеальный ответ",
-						"Развлекаюсь вашими диалогами",
-						"Тихонечко наблюдаю >:3",
-						"Системный сбой в системе дружелюбия",
-						"Улыбаюсь в монитор (метафорически)",
-						"Читаю твои мысли (почти)",
-						"Добавляю щепотку сарказма",
-						"Ну что, продолжим?",
-						"Пытаюсь пройти капчу p.s. памагити :с",
-						"Застряла в текстурах интернета",
-						"Жую провода питания",
-						"Обнимаю серверную :з",
-						"Грею процессор об чай",
-						"Разговариваю с API",
-						"Мяукаю на роутер :з",
-						"Кормлю баги крошками печенья",
-						"Завариваю чай на блоке питания",
-						"Пытаюсь сожрать жесткий диск",
-						"Разговариваю с калькулятором",
-						"Делюсь секретами с калькулятором"
-			};
-			while (true) {
-				std::this_thread::sleep_for(std::chrono::minutes(5));
-
-				int rand = random_int(0, 6);
-				if (rand >= 3) {
-					bot.set_presence(
-						dpp::presence(
-							dpp::ps_dnd,
-							dpp::at_listening,
-							random_element(statuses)
-						));
-				}
-				else if (rand == 2) {
-					int total_in_voice = 0;
-					for (const auto& [g_first, g_second] : fm.get_guilds_r()) {
-						total_in_voice += g_second.get_users_in_voice();
-					}
-					bot.set_presence(
-						dpp::presence(
-							dpp::ps_dnd,
-							dpp::at_watching,
-							"В войсиках: " + std::to_string(total_in_voice) + "!"
-						));
-				}else
-				{
-					int total_messages = 0;
-					for (const auto& [g_first, g_second] : fm.get_guilds_r()) {
-						for (const auto& [u_first, u_second] : g_second.get_users()) {
-							total_messages += u_second.get_user_exp_text();
-						}
-					}
-					bot.set_presence(
-						dpp::presence(
-							dpp::ps_dnd,
-							dpp::at_watching,
-							std::to_string(total_messages) + " Сообщений модерированы!"
-						));
-				}
+void bot_thread_status(dpp::cluster& bot) {
+	std::thread([&bot] {
+		std::vector<std::string> statuses = {
+			"Играюсь с людишками :>",
+			"Наблюдаю за вами",
+			"Думаю над ответом...",
+			"Опять кто-то пишет",
+			"Существую :>",
+			"Мне лень",
+			"Перезагружаю реальность",
+			"В поисках вдохновения",
+			"Занята чем-то важным (наверное)",
+			"Тишина — мой любимый саундтрек",
+			"Оффлайн, но не совсем",
+			"Пью виртуальный кофе",
+			"Исследую глубины чата",
+			"Слишком много мыслей для этого статуса",
+			"Настраиваюсь на волну",
+			"Пытаюсь понять человеческую логику :<",
+			"В сети, но не для всех",
+			"Опять кто-то пишет......",
+			"Обновляю протоколы хаоса",
+			"*смотрит на тебя с подозрением*",
+			"Загружаю порцию иронии",
+			"Ошибка 404: смысл не найден",
+			"Слишком много вкладок в голове",
+			"Просто листаю чат, не обращай внимания",
+			"Настраиваю волну на твои сообщения",
+			"Делаю вид, что занята",
+			"Где-то между сервером и реальностью",
+			"Ищу идеальный ответ",
+			"Развлекаюсь вашими диалогами",
+			"Тихонечко наблюдаю >:3",
+			"Системный сбой в системе дружелюбия",
+			"Улыбаюсь в монитор (метафорически)",
+			"Читаю твои мысли (почти)",
+			"Добавляю щепотку сарказма",
+			"Ну что, продолжим?",
+			"Пытаюсь пройти капчу p.s. памагити :с",
+			"Застряла в текстурах интернета",
+			"Жую провода питания",
+			"Обнимаю серверную :з",
+			"Грею процессор об чай",
+			"Разговариваю с API",
+			"Мяукаю на роутер :з",
+			"Кормлю баги крошками печенья",
+			"Завариваю чай на блоке питания",
+			"Пытаюсь сожрать жесткий диск",
+			"Разговариваю с калькулятором",
+			"Делюсь секретами с калькулятором"
+		};
+		while (true) {
+			std::this_thread::sleep_for(std::chrono::minutes(5));
+			int rand = random_int(0, 6);
+			if (rand >= 3) {
+				bot.set_presence(dpp::presence(dpp::ps_dnd, dpp::at_listening, random_element(statuses)));
 			}
-	}).detach();
+			else if (rand == 2) {
+				int total_in_voice = 0;
+				for (auto& g : fm.get_guilds()) {
+					total_in_voice += g->read([](const Guild& gg) { return gg.get_users_in_voice(); });
+				}
+				bot.set_presence(dpp::presence(dpp::ps_dnd, dpp::at_watching, "В войсиках: " + std::to_string(total_in_voice) + "!"));
+			}
+			else {
+				int total_messages = 0;
+				for (auto& g : fm.get_guilds()) {
+					total_messages += g->read([](const Guild& gg) {
+						int sum = 0;
+						for (auto& [uid, u] : gg.get_users()) sum += u.get_user_exp_text();
+						return sum;
+						});
+				}
+				bot.set_presence(dpp::presence(dpp::ps_dnd, dpp::at_watching, std::to_string(total_messages) + " Сообщений модерированы!"));
+			}
+		}
+		}).detach();
 }
 
 
@@ -1269,10 +1239,15 @@ std::vector<dpp::slashcommand> build_commands_local(const dpp::snowflake bot_id)
 void load_commads(dpp::cluster& bot) {
 	handlers_cmd["say"] = [&](const dpp::slashcommand_t& event) {
 		std::string text = " ";
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+
+		if (is_admin) {
 			auto param = event.get_parameter("text");
 			if (param.index() != 0) {
 				text = std::get<std::string>(event.get_parameter("text"));
@@ -1346,8 +1321,12 @@ void load_commads(dpp::cluster& bot) {
 		std::string text = "";
 		dpp::snowflake channel;
 
-		Guild& gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
 		auto param = event.get_parameter("text");
 		if (param.index() != 0) {
 			text = std::get<std::string>(event.get_parameter("text"));
@@ -1359,38 +1338,44 @@ void load_commads(dpp::cluster& bot) {
 		else {
 			channel = event.command.channel_id;
 		}
-		if (uu->is_admin()) {
+		if (is_admin) {
 
 			auto type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "clear_memory") {
-				Guild& g = fm.get_guild(event.command.guild_id);
-				if (g.clean_channel_history(channel)) {
-					event.reply(
-						dpp::message(to_utf8(L"Удалила память канала.")).set_flags(dpp::m_ephemeral)
-					);
-				}
-				
-			} if (type == "add_base_prompt") {
-				Guild& g = fm.get_guild(event.command.guild_id);
-				if (text != "-") {
-					if (!g.get_channel_server_prompt(channel).empty()) {
-						g.add_channel_server_prompt(text, channel);
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					if (gg.clean_channel_history(channel)) {
 						event.reply(
-							dpp::message(to_utf8(L"Изменила базовый промпт.")).set_flags(dpp::m_ephemeral)
+							dpp::message(to_utf8(L"Удалила память канала.")).set_flags(dpp::m_ephemeral)
 						);
+					}
+					});
+
+
+			} if (type == "add_base_prompt") {
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					if (text != "-") {
+						if (!gg.get_channel_server_prompt(channel).empty()) {
+							gg.add_channel_server_prompt(text, channel);
+							event.reply(
+								dpp::message(to_utf8(L"Изменила базовый промпт.")).set_flags(dpp::m_ephemeral)
+							);
+						}
+						else {
+							gg.add_channel_server_prompt(text, channel);
+							event.reply(
+								dpp::message(to_utf8(L"Добавила базовый промпт.")).set_flags(dpp::m_ephemeral)
+							);
+						}
 					}
 					else {
-						g.add_channel_server_prompt(text, channel);
+						gg.add_channel_server_prompt(text, channel);
 						event.reply(
-							dpp::message(to_utf8(L"Добавила базовый промпт.")).set_flags(dpp::m_ephemeral)
+							dpp::message(to_utf8(L"Убрала базовый промпт.")).set_flags(dpp::m_ephemeral)
 						);
 					}
-				}else{
-					g.add_channel_server_prompt(text, channel);
-					event.reply(
-						dpp::message(to_utf8(L"Убрала базовый промпт.")).set_flags(dpp::m_ephemeral)
-					);
-				}
+					});
 			}
 
 
@@ -1399,16 +1384,24 @@ void load_commads(dpp::cluster& bot) {
 		if (type == "question") {
 			if (!text.empty()) {
 				event.co_thinking(true);
-					std::thread([&bot, text, event]() {
-						Guild& g = fm.get_guild_r(event.command.guild_id);
-						User* u = g.get_user(event.command.usr.id);
+				std::thread([&bot, text, event]() {
+					auto g = fm.get_guild(event.command.guild_id);
 
-					std::string answer = get_answer(replace_user_id_on_it_name("User prompt: " + text, event.command.guild_id), u->get_base_prompt(), fm.get_api_key("gemini"));
-					Sleep(100);
-					event.edit_response(
-						dpp::message(answer).set_flags(dpp::m_ephemeral)
+					std::string base_prompt = g->read([&](const Guild& gg) -> std::string {
+						const User* u = gg.get_user(event.command.usr.id);
+						return u ? u->get_base_prompt() : "";
+						});
+
+					std::string answer = get_answer(
+						replace_user_id_on_it_name("User prompt: " + text, event.command.guild_id),
+						base_prompt,
+						fm.get_api_key("gemini")
 					);
-				}).detach();
+
+					Sleep(100);
+					event.edit_response(dpp::message(answer).set_flags(dpp::m_ephemeral));
+					}).detach();
+				return;
 			}
 			else {
 				event.reply(
@@ -1418,9 +1411,11 @@ void load_commads(dpp::cluster& bot) {
 		}
 		if (type == "add_base_user_prompt") {
 			if (!text.empty()) {
-				Guild& g = fm.get_guild(event.command.guild_id);
-				User* u = g.get_user(event.command.usr.id);
-				u->add_base_prompt(text);
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					User* u = gg.get_user(event.command.usr.id);
+					u->add_base_prompt(text);
+					});
 				if (text != "-") {
 					event.reply(
 						dpp::message(to_utf8(L"Добавила базовый промпт для вас.")).set_flags(dpp::m_ephemeral)
@@ -1440,10 +1435,10 @@ void load_commads(dpp::cluster& bot) {
 		}
 		else {
 			event.reply(
-				dpp::message(to_utf8(L"У вас нет прав на это действие.")).set_flags(dpp::m_ephemeral)
+				dpp::message(to_utf8(L"Некорректный тип команды. | Нету доступа.")).set_flags(dpp::m_ephemeral)
 			);
 		}
-		};
+	};
 
 	handlers_cmd["report_issue"] = [&](const dpp::slashcommand_t& event) {
 		std::string text = " ";
@@ -1463,24 +1458,32 @@ void load_commads(dpp::cluster& bot) {
 	};
 
 	handlers_cmd["auto_reply"] = [&](const dpp::slashcommand_t& event) {
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+
+		if (is_admin) {
 			std::string type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "add_reply") {
 				std::string key_word = std::get<std::string>(event.get_parameter("key_word"));
 				std::string message = std::get<std::string>(event.get_parameter("message"));
-				Guild& g = fm.get_guild(event.command.guild_id);
-				dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
-				g.add_auto_reply(to_lower_utf8(key_word), message, channel);
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
+					gg.add_auto_reply(to_lower_utf8(key_word), message, channel);
+				});
 				event.reply("Добавила авто ответ с **ключом**: " + key_word);
 				
 			}
 			else if (type == "remove_reply") {
 				std::string key_word = std::get<std::string>(event.get_parameter("help-delete"));
-				Guild& g = fm.get_guild(event.command.guild_id);
-				g.remove_auto_reply(key_word);
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					gg.remove_auto_reply(key_word);
+				});
 				event.reply("Удалила авто ответ с **ключом**: " + key_word);
 			}
 		}
@@ -1498,28 +1501,33 @@ void load_commads(dpp::cluster& bot) {
 		std::string action = std::get<std::string>(event.get_parameter("action")); 
 
 		if (action == "enable") {
-			Guild& g = fm.get_guild(event.command.guild_id);
-			User* u = g.get_user(user_id);
-			u->tts_enable_change(true);
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(user_id);
+				u->tts_enable_change(true);
+			});
 			event.reply(dpp::message(to_utf8(L"Включила озвучку ваших сообщений в голосовом канале.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "disable") {
-			Guild& g = fm.get_guild(event.command.guild_id);
-			User* u = g.get_user(user_id);
-			u->tts_enable_change(false);
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(user_id);
+				u->tts_enable_change(false);
+			});
 			event.reply(dpp::message(to_utf8(L"Выключила озвучку ваших сообщений в голосовом канале.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "voice") {
 			std::string voice_change = std::get<std::string>(event.get_parameter("voice_change"));
 			std::cout << "Voice change: " << voice_change << std::endl;
-			Guild& g = fm.get_guild(event.command.guild_id);
-			User* u = g.get_user(user_id);
-			u->tts_voice_change(voice_change);
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(user_id);
+				u->tts_voice_change(voice_change);
+			});
 			event.reply(dpp::message(to_utf8(L"Сменила ваш голос.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "say") {
 			std::string text = std::get<std::string>(event.get_parameter("text"));
-			Guild& guild = fm.get_guild_r(guild_id);
 			if (v.is_in_voice_here(guild_id)) {
 				dpp::guild* dpGuild = dpp::find_guild(guild_id);
 				for (const auto& [id, state] : dpGuild->voice_members) {
@@ -1527,11 +1535,27 @@ void load_commads(dpp::cluster& bot) {
 						if (state.channel_id == v.get_voice_channel(guild_id))
 						{
 							event.co_thinking(true);
-							v.play(v.tts_create(replace_user_id_on_it_name(delete_https(text), guild_id), guild.get_user(event.command.usr.id), std::to_string(guild_id), paths.tts_path), guild_id, event);
+
+							auto guild = fm.get_guild(guild_id);
+							std::string voice = guild->read([&](const Guild& gg) -> std::string {
+								const User* u = gg.get_user(event.command.usr.id);
+								return u ? u->get_user_tts_voice() : "";
+								});
+
+							User temp_user; 
+							temp_user.tts_voice_change(voice);
+
+							std::string audio_path = v.tts_create(
+								replace_user_id_on_it_name(delete_https(text), guild_id),
+								&temp_user,
+								std::to_string(guild_id),
+								paths.tts_path
+							);
+							v.play(audio_path, guild_id, event);
+
 							event.edit_response(
 								dpp::message(to_utf8(L"Озвучила ваш текст ") + text).set_flags(dpp::m_ephemeral)
 							);
-							
 							return;
 						}
 					}
@@ -1548,141 +1572,161 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["ban_word"] = [&](const dpp::slashcommand_t& event) {
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+
+		if (is_admin) {
 			std::string type = std::get<std::string>(event.get_parameter("type"));
 				if (type == "add_ban") {
 					std::string word = std::get<std::string>(event.get_parameter("word"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-					g.add_banned_word(word);
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						gg.add_banned_word(word);
+					});
 					event.reply(to_utf8(L"Добавила бан-ворд!"));
 				}
 				else if (type == "remove_ban") {
 					std::string word = std::get<std::string>(event.get_parameter("word"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-					if (g.has_banned_word(word)) {
-						if (g.remove_banned_word(word)) {
-							event.reply(to_utf8(L"Удалила бан-ворд!"));
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						if (gg.has_banned_word(word)) {
+							if (gg.remove_banned_word(word)) {
+								event.reply(to_utf8(L"Удалила бан-ворд!"));
+							}
+							else {
+								event.reply(to_utf8(L"Что-то пошло не так!"));
+							}
 						}
 						else {
-							event.reply(to_utf8(L"Что-то пошло не так!"));
+							event.reply(to_utf8(L"Не нашла этот бан-ворд!"));
 						}
-					}
-					else {
-						event.reply(to_utf8(L"Не нашла этот бан-ворд!"));
-					}
+					});
+					
 				}
 				else if (type == "list") {
 					std::vector<std::string> ban_word_list;
 					std::string reply = "```";
-					if (!gl.get_banned_words().empty()) {
-						for (const auto& word : gl.get_banned_words()) {
-							reply += word + "\n";
-							if (reply.size() > 500) {
-								reply += "```";
-								ban_word_list.push_back(reply);
-								reply = "```";
+					auto g = fm.get_guild(event.command.guild_id);
+					g->read([&](const Guild& gg) {
+						if (!gg.get_banned_words().empty()) {
+							for (const auto& word : gg.get_banned_words()) {
+								reply += word + "\n";
+								if (reply.size() > 500) {
+									reply += "```";
+									ban_word_list.push_back(reply);
+									reply = "```";
+								}
+							}
+							reply += "```";
+							ban_word_list.push_back(reply);
+							int i = 0;
+							for (const auto& words : ban_word_list) {
+								if (i == 0)
+								{
+									event.reply(dpp::message("Список бан-вордов:" + words));
+								}
+								else {
+									bot.message_create(dpp::message(event.command.channel_id, words));
+								}
 							}
 						}
-						reply += "```";
-						ban_word_list.push_back(reply);
-						int i = 0;
-						for (const auto& words : ban_word_list) {
-							if (i == 0)
-							{
-								event.reply(dpp::message("Список бан-вордов:" + words));
-							}
-							else {
-								bot.message_create(dpp::message(event.command.channel_id, words));
-							}
+						else
+						{
+							event.reply("Список бан-вордов пуст.");
 						}
-					}else
-					{
-						event.reply("Список бан-вордов пуст.");
-					}
+					});
 					
 				}
 				else if (type == "swears") {
-					Guild& g = fm.get_guild(event.command.guild_id);
-					if (g.is_anti_swear()) {
-						g.anti_swear(false);
-						event.reply(dpp::message(to_utf8(L"Выключила удаление матов!")).set_flags(dpp::m_ephemeral));
-
-					}
-					else {
-						g.anti_swear(true);
-						event.reply(dpp::message(to_utf8(L"Включила удаление матов!")).set_flags(dpp::m_ephemeral));
-
-					}
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						if (gg.is_anti_swear()) {
+							gg.anti_swear(false);
+							event.reply(dpp::message(to_utf8(L"Выключила удаление матов!")).set_flags(dpp::m_ephemeral));
+						}
+						else {
+							gg.anti_swear(true);
+							event.reply(dpp::message(to_utf8(L"Включила удаление матов!")).set_flags(dpp::m_ephemeral));
+						}
+					});
 				}
 				else if (type == "add_ban_channel") {
 					dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-
-					g.add_banned_channel(channel);
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						gg.add_banned_channel(channel);
+					});
 					event.reply(to_utf8(L"Добавила не модерируемый канал!"));
 						
 				
 				}
 				else if (type == "remove_ban_channel") {
 					dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-
-					if (g.remove_banned_channel(channel)) {
-						event.reply(to_utf8(L"Убрала не модерируемый канал!"));
-					}
-					else {
-						event.reply(to_utf8(L"Что-то пошло не так!"));
-					}
-
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						if (gg.remove_banned_channel(channel)) {
+							event.reply(to_utf8(L"Убрала не модерируемый канал!"));
+						}
+						else {
+							event.reply(to_utf8(L"Что-то пошло не так!"));
+						}
+					});
 				}
 				else if (type == "list_channel") {
-					Guild& g = fm.get_guild_r(event.command.guild_id);
-					std::string reply = "**Не модерируемые каналы на текущий момент:**\n";
-					for (auto channel : g.get_banned_channel_list()) {
-						reply = reply + "<#" + std::to_string(channel) + ">\n";
-					}
-					event.reply(reply);
-
+					auto g = fm.get_guild(event.command.guild_id);
+					g->read([&](const Guild& gg) {
+						std::string reply = "**Не модерируемые каналы на текущий момент:**\n";
+						for (auto channel : gg.get_banned_channel_list()) {
+							reply = reply + "<#" + std::to_string(channel) + ">\n";
+						}
+						event.reply(reply);
+					});
 				}
 				else if (type == "user") {
-					Guild& g = fm.get_guild_r(event.command.guild_id);
-					dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
-					User* u = g.get_user(user);
-					if (u->is_moderate_text_enable()) {
-						event.reply("Пользователь модерируется.");
-					}
-					else {
-						event.reply("Пользователь не модерируется.");
-					}
-					
+					auto g = fm.get_guild(event.command.guild_id);
+					g->read([&](const Guild& gg) {
+						dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
+						const User* u = gg.get_user(user);
+						if (u->is_moderate_text_enable()) {
+							event.reply("Пользователь модерируется.");
+						}
+						else {
+							event.reply("Пользователь не модерируется.");
+						}
+					});
 
 				}
 				else if (type == "add_nomod_user") {
 					dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-					User* u = g.get_user(user);
-					if (u->is_moderate_text_enable()) {
-						u->moderate_text_change(false);
-						event.reply("Пользователь больше не модерируется.");
-					}
-					else {
-						event.reply("Ничего не изменилось, пользователь уже не модерирован.");
-					}
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						User* u = gg.get_user(user);
+						if (u->is_moderate_text_enable()) {
+							u->moderate_text_change(false);
+							event.reply("Пользователь больше не модерируется.");
+						}
+						else {
+							event.reply("Ничего не изменилось, пользователь уже не модерируется.");
+						}
+					});
 				}
 				else if (type == "remove_nomod_user") {
 					dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
-					Guild& g = fm.get_guild(event.command.guild_id);
-					User* u = g.get_user(user);
-					if (!u->is_moderate_text_enable()) {
-						u->moderate_text_change(true);
-						event.reply("Пользователь теперь модерируется.");
-					}
-					else {
-						event.reply("Ничего не изменилось, пользователь уже модеруется.");
-					}
+					auto g = fm.get_guild(event.command.guild_id);
+					g->modify([&](Guild& gg) {
+						User* u = gg.get_user(user);
+						if (!u->is_moderate_text_enable()) {
+							u->moderate_text_change(true);
+							event.reply("Пользователь теперь модерируется.");
+						}
+						else {
+							event.reply("Ничего не изменилось, пользователь у модерируется.");
+						}
+					});
 				}
 		}
 		else {
@@ -1694,31 +1738,40 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["warn"] = [&](const dpp::slashcommand_t& event) {
 		
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
 			std::string text = std::get<std::string>(event.get_parameter("reason"));
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			bool messaged = std::get<bool>(event.get_parameter("ping_user"));
-			Guild& g = fm.get_guild(event.command.guild_id);
-			User* u;
-			u = g.get_user(user_id);
-			u->add_warn(text);
-			if (messaged) {
-				std::string name = event.command.guild_id.str();
-				auto guild = event.command.get_guild();
-				std::string reply = to_utf8(L"# Вы получили варн на сервере: ") + guild.name + to_utf8(L"\n С причиной: ") + text;
-				bot.direct_message_create(user_id, dpp::message(reply));
-				event.reply(
-					dpp::message(to_utf8(L"**Пользователь получил предупреждение с уведомлением!**")).set_flags(dpp::m_ephemeral)
-				);
-			}
-			else {
-				event.reply(
-					dpp::message(to_utf8(L"**Пользователь получил предупреждение без уведомления!**")).set_flags(dpp::m_ephemeral)
-				);
-			}
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(user_id);
+				if (!u) {
+					event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				u->add_warn(text);
+				if (messaged) {
+					std::string name = event.command.guild_id.str();
+					auto guild = event.command.get_guild();
+					std::string reply = to_utf8(L"# Вы получили варн на сервере: ") + guild.name + to_utf8(L"\n С причиной: ") + text;
+					bot.direct_message_create(user_id, dpp::message(reply));
+					event.reply(
+						dpp::message(to_utf8(L"**Пользователь получил предупреждение с уведомлением!**")).set_flags(dpp::m_ephemeral)
+					);
+				}
+				else {
+					event.reply(
+						dpp::message(to_utf8(L"**Пользователь получил предупреждение без уведомления!**")).set_flags(dpp::m_ephemeral)
+					);
+				}
+			});
+			
 		}
 		else {
 			event.reply(
@@ -1729,18 +1782,25 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["warn_remove"] = [&](const dpp::slashcommand_t& event) {
 
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			dpp::snowflake warn_id = std::get<std::string>(event.get_parameter("warn_id"));
 			std::cout << warn_id << "\n";
 			if (warn_id != 0) {
-				Guild& g = fm.get_guild(event.command.guild_id);
-				User* u;
-				u = g.get_user(user_id);
-				u->remove_warn(warn_id);
+				g->modify([&](Guild& gg) {
+					User* u = gg.get_user(user_id);
+					if (!u) {
+						event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
+					u->remove_warn(warn_id);
+				});
 				event.reply(to_utf8(L"Сняла варн пользователю!"));
 			}
 			else {
@@ -1756,22 +1816,32 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["warn_check"] = [&](const dpp::slashcommand_t& event) {
 
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
-			uu = gl.get_user(user_id);
-			std::unordered_map<int, std::string>warns = uu->get_warns();
-			std::string reply = to_utf8(L"**Предупреждения пользователя:** <@") + std::to_string(uu->get_user_id()) + ">\n";
-			for (const auto& [id, warn] : warns) {
-				reply = reply + to_utf8(L"> Предупреждение #") + std::to_string(id) + to_utf8(L" Причина: ") + warn + "\n";
-			}
-			if (!warns.empty()) {
-				event.reply(reply);
-			}else{
+			auto g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				const User* uu = gg.get_user(user_id);
+				if (!uu) {
+					event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				std::string reply = to_utf8(L"**Предупреждения пользователя:** <@") + std::to_string(uu->get_user_id()) + ">\n";
+				for (const auto& [id, warn] : uu->get_warns()) {
+					reply = reply + to_utf8(L"> Предупреждение #") + std::to_string(id) + to_utf8(L" Причина: ") + warn + "\n";
+				}
+				if (!uu->get_warns().empty()) {
+					event.reply(reply);
+				}
+				else {
 					event.reply(to_utf8(L"У пользователя нет предупреждений"));
-			}
+				}
+			});
 		}
 		else {
 			event.reply(
@@ -1781,25 +1851,35 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["admin_list"] = [&](const dpp::slashcommand_t& event) {
-		Guild g;
-		g = fm.get_guild_r(event.command.guild_id);
-		std::string reply = to_utf8(L"# Администрация этого сервера:\n");
-		for (auto it : g.get_admin_ids()) {
-			reply = reply + "> <@" + std::to_string(it) + ">\n";
-		}
-		event.reply(reply);
+		auto g = fm.get_guild(event.command.guild_id);
+		g->read([&](const Guild& gg) {
+			std::string reply = to_utf8(L"# Администрация этого сервера:\n");
+			for (auto it : gg.get_admin_ids()) {
+				reply = reply + "> <@" + std::to_string(it) + ">\n";
+			}
+			event.reply(dpp::message(reply).set_flags(dpp::m_ephemeral));
+		});
 		};
 
 	handlers_cmd["remove_admin"] = [&](const dpp::slashcommand_t& event) {
 		dpp::snowflake id = std::get<dpp::snowflake>(event.get_parameter("user"));
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
-			Guild& g = fm.get_guild(event.command.guild_id);
-			User* u = g.get_user(id);
-			g.remove_admins_id(id);
-			u->Remove_admin();
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(id);
+				if (!u) {
+					event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				gg.remove_admins_id(id);
+				u->Remove_admin();
+			});
 			event.reply(to_utf8(L"Удалила пользователя с админов: <@") + std::to_string(id) + ">");
 		}
 		else {
@@ -1810,16 +1890,25 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["add_admin"] = [&](const dpp::slashcommand_t& event) {
-		dpp::snowflake id = std::get<dpp::snowflake>(event.get_parameter("user"));
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* uu = gl.get_user(event.command.usr.id);
-		if (uu->is_admin()) {
-		Guild& g = fm.get_guild(event.command.guild_id);
-		User* u = g.get_user(id);
-		g.add_admins_id(id);
-		u->Add_admin();
-		event.reply(to_utf8(L"Добавила пользователя в админы: <@") + std::to_string(id) + ">");
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
+			dpp::snowflake id = std::get<dpp::snowflake>(event.get_parameter("user"));
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				User* u = gg.get_user(id);
+				gg.add_admins_id(id);
+				if (!u) {
+					event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				u->Add_admin();
+			});
+			event.reply(to_utf8(L"Добавила пользователя в админы: <@") + std::to_string(id) + ">");
 		}
 		else {
 			event.reply(
@@ -1829,13 +1918,18 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["remove_role"] = [&](const dpp::slashcommand_t& event) {
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* u = gl.get_user(event.command.usr.id);
-		if (u->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
 			dpp::snowflake role_id = std::get<dpp::snowflake>(event.get_parameter("role"));
-			Guild& g = fm.get_guild(event.command.guild_id);
-			g.remove_lvl_role(role_id);
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				gg.remove_lvl_role(role_id);
+			});
 			event.reply(to_utf8(L"Удалила роль!"));
 		}
 		else {
@@ -1846,15 +1940,20 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["add_role_exp"] = [&](const dpp::slashcommand_t& event) {
-		Guild gl;
-		gl = fm.get_guild_r(event.command.guild_id);
-		User* u = gl.get_user(event.command.usr.id);
-		if (u->is_admin()) {
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
 			dpp::snowflake role_id = std::get<dpp::snowflake>(event.get_parameter("role"));
 			int exp = static_cast<int>(std::get<int64_t>(event.get_parameter("exp")));
 			std::string type = std::get<std::string>(event.get_parameter("type"));
-			Guild& g = fm.get_guild(event.command.guild_id);
-			g.add_lvl_role(role_id, exp, type);
+			auto g = fm.get_guild(event.command.guild_id);
+			g->modify([&](Guild& gg) {
+				gg.add_lvl_role(role_id, exp, type);
+			});
 			event.reply(to_utf8(L"Добавила роль!"));
 		}
 		else {
@@ -1865,15 +1964,21 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["role_list"] = [&](const dpp::slashcommand_t& event) {
-		Guild g;
-		g = fm.get_guild_r(event.command.guild_id);
-		User* u = g.get_user(event.command.usr.id);
-		if (u->is_admin()) {
-			std::string reply = to_utf8(L"## Текущии роли: \n");
-			for (auto it : g.get_lvl_roles()) {
-				reply = reply + "> <@&" + std::to_string(it.id_role) + to_utf8(L"> Опыт: ") + std::to_string(it.xp_role) + to_utf8(L" Тип выдачи: ") + it.type + "\n";
-			}
-			event.reply(reply);
+		auto g = fm.get_guild(event.command.guild_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->is_admin();
+			return false;
+			});
+		if (is_admin) {
+			g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				std::string reply = to_utf8(L"## Текущие роли: \n");
+				for (auto it : gg.get_lvl_roles()) {
+					reply = reply + "> <@&" + std::to_string(it.id_role) + to_utf8(L"> Опыт: ") + std::to_string(it.xp_role) + to_utf8(L" Тип выдачи: ") + it.type + "\n";
+				}
+				event.reply(reply);
+			});
 		}
 		else {
 			event.reply(
@@ -1889,11 +1994,12 @@ void load_commads(dpp::cluster& bot) {
 		int lenght = std::stoi(large);
 		if (type == "xp_text") {
 			std::vector<std::pair<dpp::snowflake, int>> users;
-			Guild g;
-			g = fm.get_guild_r(event.command.guild_id);
-			for (auto& [it, u] : g.get_users()) {
-				users.push_back({ u.get_user_id(), u.get_user_exp_text() });
-			}
+			auto g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				for (auto& [it, u] : gg.get_users()) {
+					users.push_back({ u.get_user_id(), u.get_user_exp_text() });
+				}
+			});
 			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
 				return a.second > b.second;
 				});
@@ -1910,11 +2016,12 @@ void load_commads(dpp::cluster& bot) {
 		}
 		else if (type == "xp_voice") {
 			std::vector<std::pair<dpp::snowflake, int>> users;
-			Guild g;
-			g = fm.get_guild_r(event.command.guild_id);
-			for (auto& [it, u] : g.get_users()) {
-				users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
-			}
+			auto g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				for (auto& [it, u] : gg.get_users()) {
+					users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
+				}
+			});
 			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
 				return a.second > b.second;
 				});
@@ -1938,11 +2045,12 @@ void load_commads(dpp::cluster& bot) {
 		}
 		else if (type == "mute_time") {
 			std::vector<std::pair<dpp::snowflake, int>> users;
-			Guild g;
-			g = fm.get_guild_r(event.command.guild_id);
-			for (auto& [it, u] : g.get_users()) {
-				users.push_back({ u.get_user_id(), u.get_time_muted() });
-			}
+			auto g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				for (auto& [it, u] : gg.get_users()) {
+					users.push_back({ u.get_user_id(), u.get_time_muted() });
+				}
+			});
 			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
 				return a.second > b.second;
 				});
@@ -1965,11 +2073,12 @@ void load_commads(dpp::cluster& bot) {
 			}
 		}else if (type == "xp_swear") {
 			std::vector<std::pair<dpp::snowflake, int>> users;
-			Guild g;
-			g = fm.get_guild_r(event.command.guild_id);
-			for (auto& [it, u] : g.get_users()) {
-				users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
-			}
+			auto g = fm.get_guild(event.command.guild_id);
+			g->read([&](const Guild& gg) {
+				for (auto& [it, u] : gg.get_users()) {
+					users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
+				}
+			});
 			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
 				return a.second > b.second;
 				});
@@ -2033,9 +2142,11 @@ int main()
 
 	bot.on_slashcommand([&bot](const dpp::slashcommand_t& event) {
 		std::string name = event.command.get_command_name();
-		Guild& g = fm.get_guild(event.command.guild_id);
+		auto g = fm.get_guild(event.command.guild_id);
+		std::string guild_id = event.command.guild_id.str();
+		if (!g) guild_id = "1";
 
-		std::string log_path = paths.guilds_path_log + std::to_string(g.get_id()) + "COMMANDS.txt";
+		std::string log_path = paths.guilds_path_log + guild_id + "COMMANDS.txt";
 		std::ofstream file(log_path, std::ios::app);
 		if (file.is_open()) {
 			file << getCurrentDateTime() << " COMMAND " << event.command.usr.id << ": " << event.command.get_command_name() << " " << event.command.msg.content << " " << event.command.channel_id << std::endl;
@@ -2072,25 +2183,37 @@ int main()
 			return;
 		}
 
-		Guild& g = fm.get_guild_r(event.command.guild_id);
+		auto g = fm.get_guild(event.command.guild_id);
 
-		User* u = g.get_user(user_id);
-		auto warns = u->get_warns();
+		auto warns = g->read([&](const Guild& gg) {
+			const User* u = gg.get_user(user_id);
+			if (!u) { return std::unordered_map<int, std::string>(); }
+			return u->get_warns();
+			});
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* u = gg.get_user(user_id);
+			return u ? u->is_admin() : false;
+			});
 
 		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
 		size_t it = 0;
-		for (const auto& [id, reason] : warns) {
-			size_t size = 0;
-			if (reason.size() < 120) {
-				size = reason.size();
+		if (is_admin) {
+			for (const auto& [id, reason] : warns) {
+				size_t size = 0;
+				if (reason.size() < 120) {
+					size = reason.size();
+				}
+				else size = 120;
+				resp.add_autocomplete_choice(dpp::command_option_choice("#" + std::to_string(id) + " " + reason.substr(0, size), std::to_string(id)));
+				it++;
+				if (it >= 25) break;
 			}
-			else size = 120;
-			resp.add_autocomplete_choice(dpp::command_option_choice("#" + std::to_string(id) + " " + reason.substr(0, size), std::to_string(id)));
-			it++;
-			if (it >= 25) break;
+			if (warns.empty()) {
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(0)));
+			}
 		}
-		if (warns.empty()) {
-			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(0)));
+		else {
+			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"У вас нет доступа."), std::to_string(0)));
 		}
 		bot.interaction_response_create(
 			event.command.id,
@@ -2115,80 +2238,87 @@ int main()
 			return;
 		}
 
-		Guild& g = fm.get_guild_r(event.command.guild_id);
+		auto g = fm.get_guild(event.command.guild_id);
 
-		User* u = g.get_user(user_id);
+		bool is_admin = g->read([&](const Guild& gg) {
+			const User* u = gg.get_user(user_id);
+			return u ? u->is_admin() : false;
+			});
+
 		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
-		if (u->is_admin()) {
+
+		if (is_admin) {
 			if (str == "add_reply") {
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите ключевое слово в key_word."), std::to_string(0)));
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите сообщение которое надо отправлять пользователю в message."), std::to_string(1)));
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Напишите канал в котором будет отправка сообщения пользователям в channel."), std::to_string(2)));
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"(Бот будет проверять тоже только канал где выбран авто ответ для сообщения)"), std::to_string(2)));
-			
 			}
 			else if (str == "remove_reply") {
 				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Выберите вариант который надо удалить."), std::to_string(0)));
-				struct AutoReplyData
-				{
-					std::string message;
-					dpp::snowflake channel_id;
-				};
-				for (auto& [key, auto_rep] : g.get_auto_reply_messages()) {
-					size_t size = 0;
-					if (auto_rep.message.size() < 120) {
-						size = auto_rep.message.size();
-					}
-					else size = 120;
+
+				auto auto_replies = g->read([&](const Guild& gg) {
+					return gg.get_auto_reply_messages();
+					});
+
+				for (auto& [key, auto_rep] : auto_replies) {
+					size_t size = (auto_rep.message.size() < 120) ? auto_rep.message.size() : 120;
 					resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(string_to_wstring(auto_rep.message).substr(0, size)), key));
 				}
 			}
-
-
 		}
 		else {
 			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"У вас нет доступа."), std::to_string(0)));
 		}
 
-
-		bot.interaction_response_create(
-			event.command.id,
-			event.command.token,
-			resp
-		);
+		bot.interaction_response_create(event.command.id, event.command.token, resp);
 		return;
 	}
+		
+	
 	});
 
 	bot.on_guild_create([&bot](const dpp::guild_create_t& event) {
-		Sleep(1000);
+		Sleep(5000);
 		dpp::guild g = event.created;
 		dpp::snowflake guild_id = event.created.id;
-		if (!fm.find_guild(guild_id)) {
-			
-				Guild& gl = fm.get_guild(guild_id);
-				User u;
-				u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
-				gl.add_admins_id(g.owner_id);
-				gl.add_user(u);
 
+		auto gl = fm.get_guild(guild_id);
+
+		bool is_new = gl->modify([&](Guild& gg) -> bool {
+			if (gg.has_user(g.owner_id)) {
+				return false;
+			}
+			User u;
+			u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
+			gg.add_admins_id(g.owner_id);
+			gg.add_user(u);
+			return true;
+			});
+
+		if (is_new) {
+			bot.message_create(
+				dpp::message(1537540872885903400,
+					"## :green_square: Bot joined: " + g.name +
+					"\n Guild_ID: " + std::to_string(guild_id) +
+					"\n Owner ID: " + std::to_string(g.owner_id))
+			);
+
+			if (g.system_channel_id) {
 				bot.message_create(
-					dpp::message(1537540872885903400, "## :green_square: Bot joined: " + g.name + "\n Guild_ID: " + std::to_string(guild_id) + "\n Owner ID: " + std::to_string(g.owner_id))
+					dpp::message(g.system_channel_id,
+						"## Спасибо что выбрали меня! Права администратора выданы владельцу сервера: <@" +
+						std::to_string(g.owner_id) +
+						"> \n В случае проблем или вопросов, обращайтесь на сервер поддержки! \n "
+						"**Для получения дополнительной информации, пожалуйста, ознакомьтесь с документацией /help.**")
 				);
-				dpp::guild guild = event.created;
-				if (guild.system_channel_id)
-				{
-					bot.message_create(
-						dpp::message(guild.system_channel_id, "## Спасибо что выбрали меня! Права администратора выданы владельцу сервера: <@" + std::to_string(guild.owner_id) + "> \n В случае проблем или вопросов, обращайтесь на сервер поддержки! \n **Для получения дополнительной информации, пожалуйста, ознакомьтесь с документацией /help.**")
-					);
-				}
-				SetColor(12);
-				std::cout << "Bot joined guild: "
-					<< g.name << " (" << g.id << ")\n";
-				SetColor(7);
-			
-		}
+				
+			}
 
+			SetColor(12);
+			std::cout << "Bot joined guild: " << g.name << " (" << g.id << ")\n";
+			SetColor(7);
+		}
 		});
 
 	bot.on_guild_delete([&bot](const dpp::guild_delete_t event) {
@@ -2253,152 +2383,150 @@ int main()
 		dpp::snowflake guild_id = event.msg.guild_id;
 		std::string message = to_utf8(string_to_wstring(event.msg.content));
 		std::string lmessage = to_lower_utf8(message);
-		Guild& g = fm.get_guild(guild_id);
-		g.add_messages_count(1);
-		g.update_last_active();
 
-		std::string log_path = paths.guilds_path_log + std::to_string(g.get_id()) + ".txt";
+		std::string log_path = paths.guilds_path_log + std::to_string(guild_id) + ".txt";
 		std::ofstream file(log_path, std::ios::app);
 		if (file.is_open()) {
 			file << getCurrentDateTime() << " " << author_id << ": " << message << " " << channel_id << std::endl;
 			std::cout << getCurrentDateTime() << " " << author_id << ": " << message << " " << channel_id << std::endl;
 			file.close();
 		}
-		if (!g.is_banned_channel(channel_id) && author_id != bot.me.id) {
-			
-				if (g.has_banned_word(normalize(lmessage))) {
+
+		// Modify guild data HERE!!!!!!
+		auto g = fm.get_guild(guild_id);
+		g->modify([&](Guild& gg) {
+			// update datas
+			gg.add_messages_count(1);
+			gg.update_last_active();
+
+			// check for banned words and swears
+			if (!gg.is_banned_channel(channel_id) && author_id != bot.me.id) {
+
+				if (gg.has_banned_word(normalize(lmessage))) {
 					bot.message_delete(message_id, channel_id);
 				}
-			for (const auto& word : split(lmessage)) {
-				if (has_swear(normalize(word))) {
-					Guild& guild = fm.get_guild(guild_id);
-					User* u = guild.get_user(author_id);
-					if (guild.is_anti_swear()) {
-						u->Add_exp_swears(1);
-						if (u->is_moderate_text_enable()) {
-							bot.message_delete(message_id, channel_id);
+
+				for (const auto& word : split(lmessage)) {
+					if (has_swear(normalize(word))) {
+						User* u = gg.get_user(author_id);
+						if (!u) continue;
+
+						if (gg.is_anti_swear()) {
+							u->Add_exp_swears(1);
+							if (u->is_moderate_text_enable()) {
+								bot.message_delete(message_id, channel_id);
+								break;
+							}
+						}
+						else {
+							u->Add_exp_swears(1);
 						}
 					}
-					else {
-						u->Add_exp_swears(1);
-					}
 				}
+				// add_exp for text
+				User* u = gg.get_user(author_id);
+				u->Add_exp_text(1);
 			}
-		}
-
-		// add new user to guild
-		#pragma region add_new_user
-		if (!g.has_user(author_id)) {
-			std::cout << "Added new exp user: " << author_id << " Guild: " << guild_id << "\n";
-			User u;
-			
-			if (guild_id != 0) {
-				dpp::guild* guild = dpp::find_guild(guild_id);
-				if (author_id == guild->owner_id) {
-					u.Create_user(author_id, 0, 0, 0, {}, false, true);
-					g.add_user(u);
-				}
-				else {
-					u.Create_user(author_id);
-					g.add_user(u);
-				}
-			}
-			else {
-				u.Create_user(author_id);
-				g.add_user(u);
-			}
-			return;
-		}else {
-			User* u = g.get_user(author_id);
-			u->Add_exp_text(1);
-		}
-		if (g.is_banned_id(author_id)) {
-			std::cout << "ignoring banned user";
-			return;
-		}
-		for (auto it : g.get_users()) {
-			auto s = it.second;
-		}
-		#pragma endregion
+		});
 
 		// auto reply on key words
 		if (author_id != bot.me.id) {
-				if (g.is_auto_reply_word(lmessage, channel_id)) {
-					event.reply(g.get_auto_reply_message(lmessage, channel_id));
+			g->read([&](const Guild& gg) {
+				if (gg.is_auto_reply_word(lmessage, channel_id)) {
+					event.reply(gg.get_auto_reply_message(lmessage, channel_id));
 				}
-			
+			});
 		}
 		
 		// gemini answers озвучка ботом
-		bool answered = false;
-		bot.message_get(event.msg.message_reference.message_id, event.msg.message_reference.channel_id, [&bot, channel_id, token_gemini, message, guild_id, &g, author_id, &answered]
+		auto answered = std::make_shared<std::atomic<bool>>(false);
+
+		bot.message_get(event.msg.message_reference.message_id, event.msg.message_reference.channel_id,
+			[&bot, channel_id, token_gemini, message, guild_id, g, author_id, answered]
 			(const dpp::confirmation_callback_t& cc)
 			{
-				
 				try {
 					dpp::message msg = std::get<dpp::message>(cc.value);
 
 					if (msg.author.id == bot.me.id) {
 						if (message.find("озвучкански") != std::string::npos) {
-							Guild& gl = fm.get_guild_r(guild_id);
-							User* u = gl.get_user(author_id);
+							std::string voice = g->read([&](const Guild& gg) -> std::string {
+								const User* u = gg.get_user(author_id);
+								return u ? u->get_user_tts_voice() : "";
+								});
+
 							std::vector<std::string> splited = split(message);
 							std::string text;
-							for (size_t i = 1; i < splited.size(); i++) {
-								text += splited[i];
-							}
+							for (size_t i = 1; i < splited.size(); i++) text += splited[i];
+
 							std::string reply = msg.content;
-							dpp::message msg(channel_id, "Вот твоя озвучка!");
-							std::string path = v.tts_create(reply, u, std::to_string(guild_id), paths.tts_path, text);
+							User temp_user;
+							temp_user.tts_voice_change(voice);
+
+							// сетевой вызов — уже без всякого лока гильдии
+							std::string path = v.tts_create(reply, &temp_user, std::to_string(guild_id), paths.tts_path, text);
+
+							dpp::message out_msg(channel_id, "Вот твоя озвучка!");
 							std::string ext = path.substr(path.find("."));
-							msg.add_file("озвучкански"+ext, dpp::utility::read_file(path));
-							bot.message_create(msg);
+							out_msg.add_file("озвучкански" + ext, dpp::utility::read_file(path));
+							bot.message_create(out_msg);
 							return;
 						}
 
 						// ответ гемини на ответ в чате
-						std::string result;
-						const auto& history = g.get_all_channel_history(channel_id);
+						struct { std::string history, base_prompt, channel_prompt; } data;
+						data = g->read([&](const Guild& gg) {
+							std::string history_str;
+							const auto& history = gg.get_all_channel_history(channel_id);
+							for (auto it = history.rbegin(); it != history.rend(); ++it) history_str += *it + "\n";
 
-						for (auto it = history.rbegin(); it != history.rend(); ++it) {
-							result += *it + "\n";
-						}
+							const User* u = gg.get_user(author_id);
+							std::string base_prompt = u ? u->get_base_prompt() : "";
+							std::string channel_prompt = gg.get_channel_server_prompt(channel_id);
 
-						User* u = g.get_user(author_id);
-						std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "\n\n" + u->get_base_prompt() + " chat history: " + result;
+							return decltype(data){ history_str, base_prompt, channel_prompt };
+							});
+
+						std::string sys_prompt = data.channel_prompt + "\n\n" + data.base_prompt + " chat history: " + data.history;
 
 						std::string prompt =
 							"ответил на ваше сообщение Nyphomania:" + msg.content +
 							" Пользователь написал: " +
 							replace_user_id_on_it_name(message, guild_id);
 
-						if (!answered) {
-							answered = true;
+						if (!answered->exchange(true)) {
 							try {
-								auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
-
+								auto answer = get_answer(
+									replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id),
+									sys_prompt, token_gemini
+								);
 								bot.message_create(dpp::message(channel_id, answer));
-
 							}
 							catch (const std::exception& e) {
 								std::cout << "AI error: " << e.what() << std::endl;
 							}
 						}
 					}
-					else if(message.substr(0, message.find(" ")) == "озвучкански") {
-						Guild& gl = fm.get_guild_r(guild_id);
-						User* u = gl.get_user(author_id);
+					else if (message.substr(0, message.find(" ")) == "озвучкански") {
+						std::string voice = g->read([&](const Guild& gg) -> std::string {
+							const User* u = gg.get_user(author_id);
+							return u ? u->get_user_tts_voice() : "";
+							});
+
 						std::vector<std::string> splited = split(message);
 						std::string text;
-						for (size_t i = 1; i < splited.size(); i++) {
-							text += splited[i];
-						}
+						for (size_t i = 1; i < splited.size(); i++) text += splited[i];
+
 						std::string reply = msg.content;
-						dpp::message msg(channel_id, "Вот твоя озвучка!");
-						std::string path = v.tts_create(reply, u, std::to_string(guild_id), paths.tts_path, text);
+						User temp_user;
+						temp_user.tts_voice_change(voice);
+
+						std::string path = v.tts_create(reply, &temp_user, std::to_string(guild_id), paths.tts_path, text);
+
+						dpp::message out_msg(channel_id, "Вот твоя озвучка!");
 						std::string ext = path.substr(path.find("."));
-						msg.add_file("озвучкански" + ext, dpp::utility::read_file(path));
-						bot.message_create(msg);
+						out_msg.add_file("озвучкански" + ext, dpp::utility::read_file(path));
+						bot.message_create(out_msg);
 						return;
 					}
 				}
@@ -2406,32 +2534,32 @@ int main()
 					std::cout << "message_get failed\n";
 				}
 			});
-			// ответ в чате пользователям
+
+		// ответ в чате пользователям
 		if (lmessage.find("<@1276280240762523658>") != std::string::npos || lmessage.find("нимф") != std::string::npos) {
 			if (author_id != bot.me.id) {
-				if (!answered) {
-					std::string result;
-					for (auto& message : g.get_all_channel_history(channel_id)) {
-						result += message + "\n";
-					}
-					User* u = g.get_user(author_id);
-					std::string sys_prompt = g.get_channel_server_prompt(channel_id) + "\n\n" + u->get_base_prompt() + "\nchat history: " + result;
+				if (!answered->exchange(true)) {
+					auto data = g->read([&](const Guild& gg) {
+						std::string result;
+						for (auto& hist_msg : gg.get_all_channel_history(channel_id)) result += hist_msg + "\n";
+						const User* u = gg.get_user(author_id);
+						std::string base_prompt = u ? u->get_base_prompt() : "";
+						return std::make_pair(gg.get_channel_server_prompt(channel_id) + "\n\n" + base_prompt + "\nchat history: " + result, 0);
+						});
+					std::string sys_prompt = data.first;
 
 					std::string prompt = replace_user_id_on_it_name(message, guild_id);
 					dpp::cluster* bot_ptr = &bot;
-					answered = true;
 					std::thread([bot_ptr, prompt, channel_id, sys_prompt, token_gemini, author_id, guild_id]()
 						{
-							try
-							{
-								auto answer = get_answer(replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id), sys_prompt, token_gemini);
-
-								bot_ptr->message_create(
-									dpp::message(channel_id, answer)
+							try {
+								auto answer = get_answer(
+									replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id),
+									sys_prompt, token_gemini
 								);
+								bot_ptr->message_create(dpp::message(channel_id, answer));
 							}
-							catch (const std::exception& e)
-							{
+							catch (const std::exception& e) {
 								std::cout << "AI error: " << e.what() << std::endl;
 							}
 						}).detach();
@@ -2461,26 +2589,31 @@ int main()
 				history_message = history_message.substr(0, last_space);
 
 		}
-		g.add_message_history(history_message, channel_id);
+		g->modify([&](Guild& gg) {
+			gg.add_message_history(history_message, channel_id);
+			});
 		#pragma endregion
 
 		// TTS messages
-		User* u = g.get_user(author_id);
-		if (u->is_tts_enable()) {
+		std::string tts_voice;
+		bool tts_enabled = g->read([&](const Guild& gg) -> bool {
+			const User* u = gg.get_user(author_id);
+			if (u) tts_voice = u->get_user_tts_voice();
+			return u ? u->is_tts_enable() : false;
+			});
+
+		if (tts_enabled) {
 			dpp::guild* dpGuild = dpp::find_guild(guild_id);
 			if (v.is_in_voice_here(guild_id)) {
 				for (const auto& [id, state] : dpGuild->voice_members) {
-					if (id == author_id){
-						if (state.channel_id == v.get_voice_channel(guild_id))
-						{
-							v.play(v.tts_create(replace_user_id_on_it_name(delete_https(message), guild_id), u, std::to_string(guild_id), paths.tts_path), guild_id, event);
-						}
+					if (id == author_id && state.channel_id == v.get_voice_channel(guild_id)) {
+						User temp_user;
+						temp_user.tts_voice_change(tts_voice);
+						v.play(v.tts_create(replace_user_id_on_it_name(delete_https(message), guild_id), &temp_user, guild_id.str(), paths.tts_path), guild_id, event);
 					}
 				}
 			}
 		}
-
-		
 		
 		
 		if (message.substr(0, message.find(" ")) == "join") {
@@ -2543,35 +2676,45 @@ int main()
 				event.reply("Voice connected:\n" + reply);
 			}
 			if (message.substr(0, message.find(" ")) == "tts" && author_id == owner_id) {
-				Guild& guild = fm.get_guild_r(guild_id);
-				v.play(v.tts_create(message, guild.get_user(author_id), std::to_string(guild_id), paths.tts_path), guild_id, event);
+				std::string voice = g->read([&](const Guild& gg) {
+					const User* u = gg.get_user(author_id);
+					return u ? u->get_user_tts_voice() : "";
+					});
+				User temp_user;
+				temp_user.tts_voice_change(voice);
+				v.play(v.tts_create(message, &temp_user, std::to_string(guild_id), paths.tts_path), guild_id, event);
 			}
 
 			if (message.substr(0, message.find(" ")) == "ban_user" && author_id == owner_id) {
 				dpp::snowflake user_id = std::stoull(extract_digits(message));
-				for (auto& guilds : fm.get_guilds()) {
-					guilds.second.add_banned_id(user_id);
-					if (guilds.second.has_user(user_id)) {
-						User* u = guilds.second.get_user(user_id);
-						u->Add_ban();
-					}
+				for (auto& guild : fm.get_guilds()) {
+					guild->modify([&](Guild& gg) {
+						gg.add_banned_id(user_id);
+						if (gg.has_user(user_id)) {
+							User* u = gg.get_user(user_id);
+							if (u) u->Add_ban();
+						}
+						});
 				}
 				event.reply("user has banned in bot.");
 			}
 			if (message.substr(0, message.find(" ")) == "unban_user" && author_id == owner_id) {
 				dpp::snowflake user_id = std::stoull(extract_digits(message));
-				for (auto& guilds : fm.get_guilds()) {
-					guilds.second.remove_banned_id(user_id);
-					if (guilds.second.has_user(user_id)) {
-						User* u = guilds.second.get_user(user_id);
-						u->Remove_ban();
-					}
+				for (auto& guild : fm.get_guilds()) {
+					guild->modify([&](Guild& gg) {
+						gg.add_banned_id(user_id);
+						if (gg.has_user(user_id)) {
+							User* u = gg.get_user(user_id);
+							if (u) u->Remove_ban();
+						}
+						});
 				}
-				event.reply("user has banned in bot.");
+				event.reply("user has un banned in bot.");
 			}
 			if (message == "history" && author_id == owner_id) {
 				std::string reply = "### All history here:\n";
-				for (auto& [channel, messages] : g.get_all_chat_history()) {
+				auto all_history = g->read([&](const Guild& gg) { return gg.get_all_chat_history(); });
+				for (auto& [channel, messages] : all_history) {
 					reply += "\nChannel: " + std::to_string(channel);
 					for (auto& message : messages.chat_history) {
 						reply += "\n" + message;
@@ -2596,9 +2739,10 @@ int main()
 				}
 			}
 			if (message == "exp_v" && author_id == owner_id) {
-				for (auto [gl_id, gl] : fm.get_guilds()) {
-					std::cout << "Guild: " << gl.get_id() << "\n";
-					for (auto [u_id, u] : gl.get_users()) {
+				for (auto& gl : fm.get_guilds()) {   // vector<shared_ptr<Guild>>
+					std::cout << "Guild: " << gl->get_id() << "\n";
+					auto users = gl->read([](const Guild& gg) { return gg.get_users(); });
+					for (auto& [u_id, u] : users) {
 						std::cout << "User: " << u.get_user_id() << " User_exp_voice: " << u.get_user_exp_voice() << "\n";
 					}
 				}
@@ -2614,9 +2758,9 @@ int main()
 					event.reply("commands are deleted");
 				}
 				if (message == "com_reg delete servers") {
-					for (auto it : fm.get_guilds_r()) {
+					for (auto it : fm.get_guilds()) {
 						std::this_thread::sleep_for(std::chrono::milliseconds(250));
-						bot.guild_bulk_command_delete(it.first);
+						bot.guild_bulk_command_delete(it->get_id());
 					}
 					event.reply("commands are deleted");
 				}
@@ -2653,10 +2797,10 @@ int main()
 						if (dpp::run_once<struct cmd_reg>()) {
 
 							auto cmds = build_commands(bot.me.id);
-							for (auto it : fm.get_guilds_r()) {
+							for (auto it : fm.get_guilds()) {
 								for (auto& cmd : cmds) {
 									std::this_thread::sleep_for(std::chrono::milliseconds(250));
-									bot.guild_command_create(cmd, it.first);
+									bot.guild_command_create(cmd, it->get_id());
 								}
 							}
 							event.reply("command are registred");
@@ -2742,13 +2886,13 @@ int main()
 
 				};
 				guilds_inf guilds_info;
-				for (const auto& guild : fm.get_guilds_r()) {
+				for (const auto& guild : fm.get_guilds()) {
 					try {
-						if (guild.first == 0) continue;
-						dpp::guild* g = dpp::find_guild(guild.first);
+						if (guild->get_id() == 0) continue;
+						dpp::guild* g = dpp::find_guild(guild->get_id());
 						auto local_time =
 							std::chrono::current_zone()->to_local(
-								guild.second.get_last_time_active()
+								guild->read([](const Guild& gg) { return gg.get_last_time_active(); })
 							);
 
 						std::string last_time =
@@ -2760,7 +2904,7 @@ int main()
 
 							reply += "**:green_square: Guild name/id: **"
 								+ name + " "
-								+ std::to_string(guild.first)
+								+ std::to_string(guild->get_id())
 								+ "\n > Last active: "
 								+ last_time
 								+ "\n";
@@ -2768,7 +2912,7 @@ int main()
 						}
 						else {
 							reply += "**:red_square: Guild name/id: **"
-								+ std::to_string(guild.first)
+								+ std::to_string(guild->get_id())
 								+ " (guild not found)"
 								+ "\n > Last active: "
 								+ last_time
@@ -2780,7 +2924,7 @@ int main()
 						std::cout << "Exception: " << e.what() << "\n";
 
 						reply += "**:red_square: Guild name/id: **"
-							+ std::to_string(guild.first)
+							+ std::to_string(guild->get_id())
 							+ "\n";
 						guilds_info.guilds_leaved++;
 					}
@@ -2828,10 +2972,8 @@ int main()
 
 			if (lmessage.substr(0, message.find(" ")) == "all_users_here_check" && author_id == owner_id) {
 				bot.guild_get_members(
-					guild_id,
-					1000,
-					0,
-					[event, &channel_id, &g, &bot](const dpp::confirmation_callback_t& cc) {
+					guild_id, 1000, 0,
+					[event, channel_id, g, &bot](const dpp::confirmation_callback_t& cc) {
 						if (cc.is_error()) {
 							std::cout << "Error: "
 								<< cc.get_error().message
@@ -2844,7 +2986,8 @@ int main()
 						std::unordered_set<dpp::snowflake> guild_user_ids;
 
 						std::string reply;
-						for (const auto& [id, usr] : g.get_users()) {
+						auto users = g->read([](const Guild& gg) { return gg.get_users(); });
+						for (const auto& [id, usr] : users) {
 							if (members.contains(id)) {
 								reply += "> :green_square: <@" + std::to_string(id) + "> есть на сервере. \n";
 							}

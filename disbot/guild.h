@@ -40,6 +40,7 @@ private:
     int users_in_voices;
     std::chrono::system_clock::time_point last_time_active;
     bool anti_swears;
+	mutable std::shared_mutex mutex_guild;
 public:
     void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
         std::unordered_set<dpp::snowflake> admin_ids = {},
@@ -53,11 +54,27 @@ public:
         int messages_count = 0,
         int users_in_voices = 0,
         bool anti_swears = false);
+    
+	// defence guild data with mutex
+	template<typename Func>
+	auto modify(Func&& func) {
+		std::unique_lock lock(mutex_guild);
+		return func(*this);
+	}
+	template<typename Func>
+	auto read(Func&& func) const {
+		std::shared_lock lock(mutex_guild);
+		return func(*this);
+	}
+
     void add_message_history(const std::string& str, dpp::snowflake channel_id);
     std::deque<std::string> get_all_channel_history(dpp::snowflake channel_id);
+    std::deque<std::string> get_all_channel_history(dpp::snowflake channel_id) const;
     std::unordered_map<dpp::snowflake, AI_reply>  get_all_chat_history();
+	std::unordered_map<dpp::snowflake, AI_reply>  get_all_chat_history() const;
     void add_channel_server_prompt(std::string str, dpp::snowflake channel_id);
     std::string get_channel_server_prompt(dpp::snowflake channel_id);
+    std::string get_channel_server_prompt(dpp::snowflake channel_id) const;
     bool clean_chat_history();
     bool clean_channel_history(dpp::snowflake channel_id);
     void add_auto_reply(std::string key_word, std::string message, dpp::snowflake channel);
@@ -78,6 +95,7 @@ public:
     bool has_banned_word(std::string ban_word);
     void anti_swear(bool bul);
     bool is_auto_reply_word(std::string word, dpp::snowflake channel);
+    bool is_auto_reply_word(std::string word, dpp::snowflake channel) const;
     bool is_anti_swear();
     bool is_banned_id(dpp::snowflake user_id);
     void set_messages_count(int i);
@@ -86,6 +104,7 @@ public:
     void update_last_active();
 
     std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel);
+    std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel) const;
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
     std::unordered_set<std::string> get_banned_words() const { return banned_words; }
     std::vector<lvl_role> get_lvl_roles() const { return lvl_roles; }
@@ -94,6 +113,7 @@ public:
     std::chrono::system_clock::time_point get_last_time_active() const { return last_time_active; }
 
 	User* get_user(dpp::snowflake user_id);
+    const User* get_user(dpp::snowflake user_id) const;
 	dpp::snowflake get_id() const { return guild_id; }
 	const auto& get_banned_ids() const { return banned_ids; }
 	const auto& get_admin_ids() const { return admin_ids; }
@@ -180,31 +200,31 @@ public:
     }
 
 
-    static Guild from_json(nlohmann::json& j) {
-        Guild g;
+    static std::shared_ptr<Guild> from_json(nlohmann::json& j) {
+        auto g = std::make_shared<Guild>();
 
-        g.guild_id = j.value("guild_id", 0ULL);
+        g->guild_id = j.value("guild_id", 0ULL);
 
         // users
         for (const auto& u : j["users"]) {
-            g.add_user(User::from_json(u));
+            g->add_user(User::from_json(u));
         }
 
         // banned_ids
         for (const auto& id : j["banned_ids"])
-            g.add_banned_id(id.get<uint64_t>());
+            g->add_banned_id(id.get<uint64_t>());
 
         // admin_ids
         for (const auto& id : j["admin_ids"])
-            g.add_admins_id(id.get<uint64_t>());
+            g->add_admins_id(id.get<uint64_t>());
 
         // banned_channels
         for (const auto& id : j["banned_channels"])
-            g.add_banned_channel(id.get<uint64_t>());
+            g->add_banned_channel(id.get<uint64_t>());
 
         // tts_channels
         for (const auto& id : j["tts_channels"])
-            g.add_tts_channels(id.get<uint64_t>());
+            g->add_tts_channels(id.get<uint64_t>());
 
         // lvl_roles
         if (j.contains("lvl_roles") && j["lvl_roles"].is_array()) {
@@ -215,7 +235,7 @@ public:
                 r.xp_role = item.value("xp_role", 0);
                 r.type = item.value("type", "");
 
-                g.lvl_roles.push_back(r);
+                g->lvl_roles.push_back(r);
             }
         }
         // auto_reply
@@ -228,7 +248,7 @@ public:
                 data.message = it.value().value("message", "");
                 data.channel_id = it.value().value("channel_id", 0ULL);
 
-                g.auto_reply[it.key()] = data;
+                g->auto_reply[it.key()] = data;
             }
         }
 
@@ -251,23 +271,23 @@ public:
                         .get<std::deque<std::string>>();
                 }
 
-                g.chat_history[std::stoull(it.key())] = std::move(data);
+                g->chat_history[std::stoull(it.key())] = std::move(data);
             }
         }
 
         // banned_words
         if (j.contains("banned_words") && j["banned_words"].is_array()) {
             for (const auto& word : j["banned_words"])
-                g.add_banned_word(word);
+                g->add_banned_word(word);
         }
 		// anti_swears
-        g.anti_swears = j.value("anti_swears", false);
+        g->anti_swears = j.value("anti_swears", false);
 		// messages_count
-        g.messages_count = j.value("messages_count", 0);
+        g->messages_count = j.value("messages_count", 0);
 		//last_time_active
 		if (j.contains("last_time_active") && j["last_time_active"].is_number_integer()) {
 			auto ms = std::chrono::milliseconds(j["last_time_active"].get<int64_t>());
-			g.last_time_active = std::chrono::system_clock::time_point(ms);
+			g->last_time_active = std::chrono::system_clock::time_point(ms);
 		}
 
 
@@ -275,5 +295,6 @@ public:
     }
 
 	bool has_user(dpp::snowflake user_id);
+    bool has_user(dpp::snowflake user_id) const;
 	void add_user(const User& u);
 };

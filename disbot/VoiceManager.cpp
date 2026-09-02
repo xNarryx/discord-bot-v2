@@ -380,7 +380,6 @@ std::vector<uint8_t> VoiceManager::to_pcmdata(
 		}
 	}
 
-
 	ret = avcodec_send_packet(
 		codec_ctx,
 		nullptr
@@ -712,6 +711,6 @@ std::string VoiceManager::tts_create(std::string text, User* user, std::string f
 		else {
 			return "";
 		}
-	
+	return "";
 }
 

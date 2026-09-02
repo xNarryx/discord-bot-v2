@@ -48,11 +48,11 @@ public:
 	int get_time_muted() const;
 	std::string get_user_tts_voice() const;
 	int get_user_exp_swears() const;
-	std::unordered_map<int, std::string> get_warns();
+	std::unordered_map<int, std::string> get_warns() const;
 	bool is_tts_enable() const { return tts_enable; }
 	bool is_moderate_text_enable() const { return moderate_text; }
-	bool is_banned();
-	bool is_admin();
+	bool is_banned() const { return banned; }
+	bool is_admin() const { return admin; }
 	void add_role(dpp::snowflake id);
 	void remove_role(dpp::snowflake id);
 	std::unordered_set<dpp::snowflake> get_roles() const { return roles_id; }

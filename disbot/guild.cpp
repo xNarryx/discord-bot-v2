@@ -42,7 +42,20 @@ std::deque<std::string> Guild::get_all_channel_history(dpp::snowflake channel_id
 
 	return {};
 }
+std::deque<std::string> Guild::get_all_channel_history(dpp::snowflake channel_id) const
+{
+	auto it = chat_history.find(channel_id);
+
+	if (it != chat_history.end())
+		return it->second.chat_history;
+
+	return {};
+}
 std::unordered_map<dpp::snowflake, AI_reply>  Guild::get_all_chat_history()
+{
+	return std::unordered_map<dpp::snowflake, AI_reply>(chat_history);
+}
+std::unordered_map<dpp::snowflake, AI_reply>  Guild::get_all_chat_history() const
 {
 	return std::unordered_map<dpp::snowflake, AI_reply>(chat_history);
 }
@@ -59,6 +72,14 @@ std::string Guild::get_channel_server_prompt(dpp::snowflake channel_id)
 {
 	if (chat_history.contains(channel_id)) {
 		return chat_history[channel_id].server_prompt;
+	}
+	return std::string("");
+}
+std::string Guild::get_channel_server_prompt(dpp::snowflake channel_id) const
+{
+	auto it = chat_history.find(channel_id);
+	if (it != chat_history.end()) {
+		return it->second.server_prompt;
 	}
 	return std::string("");
 }
@@ -218,12 +239,6 @@ void Guild::anti_swear(bool bul)
 
 bool Guild::is_auto_reply_word(std::string word, dpp::snowflake channel)
 {
-	/*for (auto& [key_word, message] : auto_reply) {
-		if (word.find(key_word) != std::string::npos) {
-			return true;
-		}
-	}
-	*/
 	for (const auto& [phrase, reply] : auto_reply)
 	{
 		if (word.find(phrase) != std::string::npos &&
@@ -235,6 +250,20 @@ bool Guild::is_auto_reply_word(std::string word, dpp::snowflake channel)
 
 	return false;
 }
+bool Guild::is_auto_reply_word(std::string word, dpp::snowflake channel) const
+{
+	for (const auto& [phrase, reply] : auto_reply)
+	{
+		if (word.find(phrase) != std::string::npos &&
+			reply.channel_id == channel)
+		{
+			return true;
+		}
+	}
+
+	return false;
+}
+
 
 bool Guild::is_anti_swear()
 {
@@ -282,29 +311,40 @@ std::string Guild::get_auto_reply_message(const std::string word, const dpp::sno
 
 	return std::string("");
 }
+std::string Guild::get_auto_reply_message(const std::string word, const dpp::snowflake channel) const
+{
+	for (const auto& [phrase, reply] : auto_reply)
+	{
+		if (word.find(phrase) != std::string::npos &&
+			reply.channel_id == channel)
+		{
+			return reply.message;
+		}
+	}
+
+	return std::string("");
+}
+
 
 
 User* Guild::get_user(dpp::snowflake user_id)
 {
-	if (users.contains(user_id)) {
 		auto it = users.find(user_id);
 		if (it != users.end())
 			return &it->second;
 		return nullptr;
-	}
-	else {
-		User u;
-		
-		u.Create_user(user_id);
-		users[u.get_user_id()] = u;
-		std::cout << "created user " << u.get_user_id() << "\n";
-		auto it = users.find(user_id);
-		if (it != users.end())
-			return &it->second;
-		return nullptr;
-	}
+	
 }
 
+const User* Guild::get_user(dpp::snowflake user_id) const
+{
+		auto it = users.find(user_id);
+		if (it != users.end())
+			return &it->second;
+		return nullptr;
+	
+	
+}
 
 
 bool Guild::remove_user(dpp::snowflake user_id)
@@ -324,6 +364,13 @@ bool Guild::has_user(dpp::snowflake user_id)
 	if (users.contains(user_id)) {
 		return true;
 	}else return false;
+}
+bool Guild::has_user(dpp::snowflake user_id) const
+{
+	if (users.contains(user_id)) {
+		return true;
+	}
+	else return false;
 }
 
 void Guild::add_user(const User& u) {
