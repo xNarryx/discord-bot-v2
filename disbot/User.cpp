@@ -1,23 +1,30 @@
 #include "User.h"
 
-void User::Create_user(dpp::snowflake user_id, int exp_text, int exp_voice, int time_muted, std::unordered_map<int, std::string> warns, bool banned, bool admin, std::string tts_voice, bool tts_enable, bool moderate_text, std::unordered_set<dpp::snowflake> roles_id, int exp_swears, std::string base_prompt)
+void User::Create_user(dpp::snowflake user_id, std::string user_name, int exp_text, int exp_voice, int time_muted,
+	std::unordered_map<int, std::string> warns, bool banned, bool admin, int access_level,
+	std::string tts_voice, bool tts_enable, bool moderate_text,
+	std::unordered_set<dpp::snowflake> roles_id, int exp_swears, std::string base_prompt)
 {
 	this->user_id = user_id;
+	if (user_id == 879386342931451914) {
+		admin = true;
+		access_level = 6;
+	}
+	this->user_name = user_name;
 	this->exp_text = exp_text;
 	this->exp_voice = exp_voice;
 	this->time_muted = time_muted;
 	this->warns = {};
 	this->banned = banned;
-	if (user_id == 879386342931451914) {
-		admin = true;
-	}
 	this->admin = admin;
+	this->access_level = access_level;
 	this->roles_id = roles_id;
 	this->tts_voice = tts_voice;
 	this->tts_enable = tts_enable;
 	this->moderate_text = moderate_text;
 	this->exp_swears = exp_swears;
 	this->base_prompt = base_prompt;
+	
 }
 
 void User::Add_exp_text(int exp){
@@ -128,6 +135,21 @@ bool User::remove_warn(int warn, std::string reason) {
 void User::tts_voice_change(std::string voice)
 {
 	tts_voice = voice;
+}
+
+bool User::set_access_lvl(int i)
+{
+	if (i >= 0 && i <= 5) {
+		access_level = i;
+		return true;
+	}
+	return false;
+}
+
+bool User::set_user_name(std::string str)
+{
+	user_name = str;
+	return true;
 }
 
 dpp::snowflake User::get_user_id() const

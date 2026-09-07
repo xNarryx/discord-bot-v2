@@ -349,28 +349,63 @@ std::string replace_user_id_on_it_name(const std::string str, dpp::snowflake gui
 	std::string name;
 	dpp::snowflake user_id;
 	std::vector<std::string> args = split(str);
-	for (auto& arg : args) {
-		try {
-			if (arg.substr(0, 2) == "<@") {
-				user_id = std::stoull(extract_digits(arg));
-				gm.guild_id = guild_id;
-				gm.user_id = user_id;
-				if (auto* user = gm.get_user())
-				{
-					name = user->username;
-					arg = name;
-				}
-			}
-		}
-		catch (...) {
-
+	if (args.size() == 1)
+	{
+		user_id = std::stoull(extract_digits(args[0]));
+		gm.guild_id = guild_id;
+		gm.user_id = user_id;
+		if (auto* user = gm.get_user())
+		{
+			name = user->username;
+			args[0] = name;
+		}else
+		{
+			return "";
 		}
 	}
+	else {
+		for (auto& arg : args) {
+			try {
+				if (arg.substr(0, 2) == "<@") {
+					user_id = std::stoull(extract_digits(arg));
+					gm.guild_id = guild_id;
+					gm.user_id = user_id;
+					if (auto* user = gm.get_user())
+					{
+						name = user->username;
+						arg = name;
+					}
+
+				}
+			}
+			catch (...) {
+
+			}
+		}
+	}
+
 	std::string result;
 	for (auto& arg : args) {
 		result += arg + " ";
 	}
 	return result;
+}
+void send_long_message(dpp::cluster& bot, dpp::snowflake channel_id, const std::string& message) {
+	std::vector<std::string> segments = split_max(message, 2000, '\n');
+	auto send_next = std::make_shared<std::function<void(size_t)>>();
+	*(send_next) = [&bot, channel_id, segments, send_next](size_t index) {
+		if (index >= segments.size()) return;
+			bot.message_create(dpp::message(channel_id, segments[index]), [&, index](const dpp::confirmation_callback_t& callback) {
+				if (callback.is_error()) {
+					std::cerr << "Error sending message: " << callback.get_error().message << std::endl;
+				}
+				else {
+					(*send_next)(index + 1);
+				}
+			});
+		
+		};
+	(*send_next)(0);
 }
 template<typename T>
 T random_int(T min, T max)
@@ -848,6 +883,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	);
 	cmds.push_back(remove_role);
 #pragma endregion
+/*
 #pragma region Add_admin
 	dpp::slashcommand add_admin(
 		"add_admin",
@@ -887,7 +923,7 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		bot_id
 	);
 	cmds.push_back(admin_list);
-#pragma endregion
+#pragma endregion*/
 #pragma region Warn
 	dpp::slashcommand warn(
 		"warn",
@@ -975,8 +1011,8 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 		)
 		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить бан-ворд"), "add_ban"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Убрать бан-ворд"), "remove_ban"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить не модериуемый канал"), "add_ban_channel"))
-		.add_choice(dpp::command_option_choice(to_utf8(L"Убрать не модериуемый канал"), "remove_ban_channel"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить не модерируемый канал"), "add_ban_channel"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Убрать не модерируемый канал"), "remove_ban_channel"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Добавить не модерируемого пользователя"), "add_nomod_user"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Убрать не модерируемого пользователя"), "remove_nomod_user"))
 		.add_choice(dpp::command_option_choice(to_utf8(L"Список бан-вордов"), "list"))
@@ -1195,7 +1231,51 @@ std::vector<dpp::slashcommand> build_commands(dpp::snowflake bot_id) { // comman
 	);
 	cmds.push_back(help);
 #pragma endregion
+#pragma region access_level
+	dpp::slashcommand access_level(
+		"access_level",
+		to_utf8(L"Уровень доступа пользователей"),
+		bot_id
+	);
+	access_level.add_option(
+		dpp::command_option(
+			dpp::co_string,
+			"type",
+			to_utf8(L"Выберите критерий команды"),
+			true
+		)
+		.add_choice(dpp::command_option_choice(to_utf8(L"Проверить уровень доступа"), "access_check"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Изменить уровень доступа пользователя"), "access_change"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Список уровней доступа пользователей не ниже выбранного"), "access_check_by_lvl"))
+		.add_choice(dpp::command_option_choice(to_utf8(L"Уровни доступа"), "access_levels"))
 
+	);
+	access_level.add_option(
+		dpp::command_option(
+			dpp::co_user,
+			"user",
+			to_utf8(L"Обязательно при изменении уровня доступа"),
+			false
+		)
+	);
+	access_level.add_option(
+		dpp::command_option(
+			dpp::co_integer,
+			"lvl",
+			to_utf8(L"Выберите уровень доступа"),
+			false
+		)
+		.add_choice(dpp::command_option_choice(to_utf8(L"0 - пользователь отключен в боте (не влияет на некоторые функции)."), 1))
+		.add_choice(dpp::command_option_choice(to_utf8(L"1 - пользователь имеет обычные права на команды."), 2))
+		.add_choice(dpp::command_option_choice(to_utf8(L"2 - пользователь имеет повышенные права на команды."), 3))
+		.add_choice(dpp::command_option_choice(to_utf8(L"3 - пользователь имеет права хелпера."), 4))
+		.add_choice(dpp::command_option_choice(to_utf8(L"4 - пользователь имеет права модерации."), 5))
+		.add_choice(dpp::command_option_choice(to_utf8(L"5 - пользователь имеет права администратора."), 6))
+
+
+	);
+	cmds.push_back(access_level);
+#pragma endregion
 
 
 	return cmds;
@@ -1241,13 +1321,13 @@ void load_commads(dpp::cluster& bot) {
 		std::string text = " ";
 
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
 
-		if (is_admin) {
+		if (access_lvl >= 5) {
 			auto param = event.get_parameter("text");
 			if (param.index() != 0) {
 				text = std::get<std::string>(event.get_parameter("text"));
@@ -1271,6 +1351,143 @@ void load_commads(dpp::cluster& bot) {
 					dpp::message(to_utf8(L"Отправила")).set_flags(dpp::m_ephemeral)
 				);
 				bot.message_create(dpp::message(event.command.channel_id, text));
+			}
+
+		}
+		else {
+			event.reply(
+				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
+			);
+		}
+		};
+	handlers_cmd["access_level"] = [&](const dpp::slashcommand_t& event) {
+
+		auto g = fm.get_guild(event.command.guild_id);
+		int access_lvl = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->get_access_lvl();
+			return 1;
+			});
+
+		if (access_lvl >= 5) {
+			auto type = std::get<std::string>(event.get_parameter("type"));
+			if (type == "access_check") {
+				auto param = event.get_parameter("user");
+				if (param.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали пользователя.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				dpp::snowflake user_id = std::get<dpp::snowflake>(param);
+				auto g = fm.get_guild(event.command.guild_id);
+				g->read([&](const Guild& gg) {
+					const User* u = gg.get_user(user_id);
+					if (u) {
+						event.reply(dpp::message(to_utf8(L"У пользователя <@") + std::to_string(user_id) + to_utf8(L"> уровень доступа: ") + std::to_string(u->get_access_lvl())).set_flags(dpp::m_ephemeral));
+					}
+					else {
+						event.reply(dpp::message(to_utf8(L"Пользователь не найден в базе данных.")).set_flags(dpp::m_ephemeral));
+					}
+					});
+
+			}
+			else if (type == "access_change") {
+				auto param = event.get_parameter("user");
+				if (param.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали пользователя.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				auto param1 = event.get_parameter("lvl");
+				if (param1.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали уровень доступа.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				dpp::snowflake user_id = std::get<dpp::snowflake>(param);
+				int new_lvl = static_cast<int>(std::get<int64_t>(param1)) - 1;
+
+				auto g = fm.get_guild(event.command.guild_id);
+				g->modify([&](Guild& gg) {
+					User* u = gg.get_user(user_id);
+					if (u) {
+						if (u->set_access_lvl(new_lvl)) {
+							event.reply(dpp::message(to_utf8(L"У пользователя <@") + std::to_string(user_id) + to_utf8(L"> теперь уровень доступа: ") + std::to_string(new_lvl)).set_flags(dpp::m_ephemeral));
+						}else
+						{
+							event.reply(dpp::message(to_utf8(L"Вы указали не верный уровень.")).set_flags(dpp::m_ephemeral));
+						}
+					}
+					else {
+						event.reply(dpp::message(to_utf8(L"Пользователь не найден в базе данных.")).set_flags(dpp::m_ephemeral));
+					}
+				});
+
+			} else if (type == "access_check_by_lvl") {
+				auto param1 = event.get_parameter("lvl");
+				if (param1.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали уровень доступа.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				int new_lvl = static_cast<int>(std::get<int64_t>(param1)) - 1;
+				auto g = fm.get_guild(event.command.guild_id);
+				std::string reply = g->read([&](const Guild& gg){
+					std::string reply = " ";
+					for (auto& [id,u]:gg.get_users())
+					{
+						if (u.get_access_lvl() >= new_lvl)
+						{
+							reply += to_utf8(L"> <@") + std::to_string(id) + "> - **" + std::to_string(u.get_access_lvl()) + to_utf8(L"**\n");
+						}
+					}
+					return reply;
+				});
+
+				auto parts = split_max(reply, 4096, '\n');
+				auto send_next = std::make_shared<std::function<void(size_t)>>();
+				*send_next = [event, &bot, parts, new_lvl, send_next](size_t index) {
+					if (index >= parts.size())
+						return;
+					dpp::embed embed = dpp::embed()
+						.set_color(dpp::colors::purple_amethyst)
+						.set_description(parts[index]);
+
+					if (index == 0) {
+						embed.set_title("Список пользователей с уровнем доступа не ниже: " + std::to_string(new_lvl));
+						event.reply(dpp::message(event.command.channel_id, embed), [send_next, index](const dpp::confirmation_callback_t& cc) {
+							if (cc.is_error())
+							{
+								std::cout << "Error sending part " << index + 1 << ": " << cc.get_error().message << '\n';
+								return;
+							}
+							(*send_next)(index + 1);
+							});
+
+					}
+					else {
+						bot.message_create(dpp::message(event.command.channel_id, embed), [send_next, index](const dpp::confirmation_callback_t& cc) {
+							if (cc.is_error())
+							{
+								std::cout << "Error sending part " << index + 1 << ": " << cc.get_error().message << '\n';
+								return;
+							}
+							(*send_next)(index + 1);
+							});
+					}
+
+					};
+				(*send_next)(0);
+
+			} else if (type == "access_levels") {
+				bot.message_get(1546480924521271317, 1519792393749008434, [&bot, event](const dpp::confirmation_callback_t& cc) {
+					if (cc.is_error())
+					{
+						std::cout << "Error: " << cc.get_error().message << std::endl;
+						event.reply(dpp::message(to_utf8(L"Что-то случилось не так. Используйте /report_issue")).set_flags(dpp::m_ephemeral));
+					}
+					else {
+						dpp::message msg = std::get<dpp::message>(cc.value);
+						msg.channel_id = event.command.channel_id;
+						event.reply(msg.set_flags(dpp::m_ephemeral));
+					}
+					});
 			}
 
 		}
@@ -1322,11 +1539,12 @@ void load_commads(dpp::cluster& bot) {
 		dpp::snowflake channel;
 
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
+
 		auto param = event.get_parameter("text");
 		if (param.index() != 0) {
 			text = std::get<std::string>(event.get_parameter("text"));
@@ -1338,7 +1556,7 @@ void load_commads(dpp::cluster& bot) {
 		else {
 			channel = event.command.channel_id;
 		}
-		if (is_admin) {
+		if (access_lvl >= 5) {
 
 			auto type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "clear_memory") {
@@ -1353,6 +1571,11 @@ void load_commads(dpp::cluster& bot) {
 
 
 			} if (type == "add_base_prompt") {
+				auto param = event.get_parameter("text");
+				if (param.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали текст для базового промпта.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
 				auto g = fm.get_guild(event.command.guild_id);
 				g->modify([&](Guild& gg) {
 					if (text != "-") {
@@ -1455,19 +1678,30 @@ void load_commads(dpp::cluster& bot) {
 					dpp::message(to_utf8(L"Отправила ваш запрос.")).set_flags(dpp::m_ephemeral)
 				);
 
-	};
+	};  
 
 	handlers_cmd["auto_reply"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
 
-		if (is_admin) {
+
+		if (access_lvl >= 5) {
 			std::string type = std::get<std::string>(event.get_parameter("type"));
 			if (type == "add_reply") {
+				auto param = event.get_parameter("key_word");
+				if (param.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали ключевое слово.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
+				auto param1 = event.get_parameter("message");
+				if (param1.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали сообщение.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
 				std::string key_word = std::get<std::string>(event.get_parameter("key_word"));
 				std::string message = std::get<std::string>(event.get_parameter("message"));
 				auto g = fm.get_guild(event.command.guild_id);
@@ -1479,6 +1713,11 @@ void load_commads(dpp::cluster& bot) {
 				
 			}
 			else if (type == "remove_reply") {
+				auto param = event.get_parameter("help-delete");
+				if (param.index() == 0) {
+					event.reply(dpp::message(to_utf8(L"Вы не указали ключевое слово.")).set_flags(dpp::m_ephemeral));
+					return;
+				}
 				std::string key_word = std::get<std::string>(event.get_parameter("help-delete"));
 				auto g = fm.get_guild(event.command.guild_id);
 				g->modify([&](Guild& gg) {
@@ -1517,6 +1756,11 @@ void load_commads(dpp::cluster& bot) {
 			event.reply(dpp::message(to_utf8(L"Выключила озвучку ваших сообщений в голосовом канале.")).set_flags(dpp::m_ephemeral));
 		}
 		else if (action == "voice") {
+			auto param = event.get_parameter("voice_change");
+			if (param.index() == 0) {
+				event.reply(dpp::message(to_utf8(L"Вы не указали голос на который хотите сменить.")).set_flags(dpp::m_ephemeral));
+				return;
+			}
 			std::string voice_change = std::get<std::string>(event.get_parameter("voice_change"));
 			std::cout << "Voice change: " << voice_change << std::endl;
 			auto g = fm.get_guild(event.command.guild_id);
@@ -1573,15 +1817,21 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["ban_word"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
 
-		if (is_admin) {
+
+		if (access_lvl >= 5) {
 			std::string type = std::get<std::string>(event.get_parameter("type"));
 				if (type == "add_ban") {
+					auto param = event.get_parameter("word");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали ключевое слово.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					std::string word = std::get<std::string>(event.get_parameter("word"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1590,6 +1840,11 @@ void load_commads(dpp::cluster& bot) {
 					event.reply(to_utf8(L"Добавила бан-ворд!"));
 				}
 				else if (type == "remove_ban") {
+					auto param = event.get_parameter("word");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали ключевое слово.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					std::string word = std::get<std::string>(event.get_parameter("word"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1655,6 +1910,11 @@ void load_commads(dpp::cluster& bot) {
 					});
 				}
 				else if (type == "add_ban_channel") {
+					auto param = event.get_parameter("channel");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали канал.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1665,6 +1925,11 @@ void load_commads(dpp::cluster& bot) {
 				
 				}
 				else if (type == "remove_ban_channel") {
+					auto param = event.get_parameter("channel");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали канал.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					dpp::snowflake channel = std::get<dpp::snowflake>(event.get_parameter("channel"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1687,6 +1952,11 @@ void load_commads(dpp::cluster& bot) {
 					});
 				}
 				else if (type == "user") {
+					auto param = event.get_parameter("user");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали пользователя.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					auto g = fm.get_guild(event.command.guild_id);
 					g->read([&](const Guild& gg) {
 						dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
@@ -1701,6 +1971,11 @@ void load_commads(dpp::cluster& bot) {
 
 				}
 				else if (type == "add_nomod_user") {
+					auto param = event.get_parameter("user");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали пользователя.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1715,6 +1990,11 @@ void load_commads(dpp::cluster& bot) {
 					});
 				}
 				else if (type == "remove_nomod_user") {
+					auto param = event.get_parameter("user");
+					if (param.index() == 0) {
+						event.reply(dpp::message(to_utf8(L"Вы не указали пользователя.")).set_flags(dpp::m_ephemeral));
+						return;
+					}
 					dpp::snowflake user = std::get<dpp::snowflake>(event.get_parameter("user"));
 					auto g = fm.get_guild(event.command.guild_id);
 					g->modify([&](Guild& gg) {
@@ -1739,12 +2019,13 @@ void load_commads(dpp::cluster& bot) {
 	handlers_cmd["warn"] = [&](const dpp::slashcommand_t& event) {
 		
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 4) {
 			std::string text = std::get<std::string>(event.get_parameter("reason"));
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			bool messaged = std::get<bool>(event.get_parameter("ping_user"));
@@ -1783,12 +2064,13 @@ void load_commads(dpp::cluster& bot) {
 	handlers_cmd["warn_remove"] = [&](const dpp::slashcommand_t& event) {
 
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 4) {
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			dpp::snowflake warn_id = std::get<std::string>(event.get_parameter("warn_id"));
 			std::cout << warn_id << "\n";
@@ -1799,9 +2081,14 @@ void load_commads(dpp::cluster& bot) {
 						event.reply(dpp::message(to_utf8(L"Этот пользователь ещё не взаимодействовал с ботом.")).set_flags(dpp::m_ephemeral));
 						return;
 					}
-					u->remove_warn(warn_id);
+					
+					if (u->remove_warn(warn_id)) {
+						event.reply(to_utf8(L"Сняла варн пользователю!"));
+					}else
+					{
+						event.reply(to_utf8(L"Не смогла снять варн пользователю!"));
+					}
 				});
-				event.reply(to_utf8(L"Сняла варн пользователю!"));
 			}
 			else {
 				event.reply(to_utf8(L"У пользователя нет варнов!"));
@@ -1817,12 +2104,13 @@ void load_commads(dpp::cluster& bot) {
 	handlers_cmd["warn_check"] = [&](const dpp::slashcommand_t& event) {
 
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 4) {
 			dpp::snowflake user_id = std::get<dpp::snowflake>(event.get_parameter("user"));
 			auto g = fm.get_guild(event.command.guild_id);
 			g->read([&](const Guild& gg) {
@@ -1850,7 +2138,7 @@ void load_commads(dpp::cluster& bot) {
 		}
 		};
 
-	handlers_cmd["admin_list"] = [&](const dpp::slashcommand_t& event) {
+	/*handlers_cmd["admin_list"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
 		g->read([&](const Guild& gg) {
 			std::string reply = to_utf8(L"# Администрация этого сервера:\n");
@@ -1859,9 +2147,9 @@ void load_commads(dpp::cluster& bot) {
 			}
 			event.reply(dpp::message(reply).set_flags(dpp::m_ephemeral));
 		});
-		};
+		};*/
 
-	handlers_cmd["remove_admin"] = [&](const dpp::slashcommand_t& event) {
+	/*handlers_cmd["remove_admin"] = [&](const dpp::slashcommand_t& event) {
 		dpp::snowflake id = std::get<dpp::snowflake>(event.get_parameter("user"));
 		auto g = fm.get_guild(event.command.guild_id);
 		bool is_admin = g->read([&](const Guild& gg) {
@@ -1887,9 +2175,9 @@ void load_commads(dpp::cluster& bot) {
 				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
 			);
 		}
-		};
+		}; */
 
-	handlers_cmd["add_admin"] = [&](const dpp::slashcommand_t& event) {
+	/*handlers_cmd["add_admin"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
 		bool is_admin = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
@@ -1915,16 +2203,22 @@ void load_commads(dpp::cluster& bot) {
 				dpp::message(to_utf8(L"У вас нет прав на это действие")).set_flags(dpp::m_ephemeral)
 			);
 		}
-		};
+		}; */
 
 	handlers_cmd["remove_role"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 5) {
+			auto param = event.get_parameter("role");
+			if (param.index() == 0) {
+				event.reply(dpp::message(to_utf8(L"Вы не указали роль.")).set_flags(dpp::m_ephemeral));
+				return;
+			}
 			dpp::snowflake role_id = std::get<dpp::snowflake>(event.get_parameter("role"));
 			auto g = fm.get_guild(event.command.guild_id);
 			g->modify([&](Guild& gg) {
@@ -1941,12 +2235,13 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["add_role_exp"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 5) {
 			dpp::snowflake role_id = std::get<dpp::snowflake>(event.get_parameter("role"));
 			int exp = static_cast<int>(std::get<int64_t>(event.get_parameter("exp")));
 			std::string type = std::get<std::string>(event.get_parameter("type"));
@@ -1965,12 +2260,13 @@ void load_commads(dpp::cluster& bot) {
 
 	handlers_cmd["role_list"] = [&](const dpp::slashcommand_t& event) {
 		auto g = fm.get_guild(event.command.guild_id);
-		bool is_admin = g->read([&](const Guild& gg) {
+		int access_lvl = g->read([&](const Guild& gg) {
 			const User* uu = gg.get_user(event.command.usr.id);
-			if (uu) return uu->is_admin();
-			return false;
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-		if (is_admin) {
+
+		if (access_lvl >= 5) {
 			g = fm.get_guild(event.command.guild_id);
 			g->read([&](const Guild& gg) {
 				std::string reply = to_utf8(L"## Текущие роли: \n");
@@ -1988,114 +2284,128 @@ void load_commads(dpp::cluster& bot) {
 		};
 
 	handlers_cmd["leaderscore"] = [&](const dpp::slashcommand_t& event) {
-		std::string type = std::get<std::string>(event.get_parameter("type"));
-		std::string large = std::get<std::string>(event.get_parameter("large"));
-		std::string reply;
-		int lenght = std::stoi(large);
-		if (type == "xp_text") {
-			std::vector<std::pair<dpp::snowflake, int>> users;
-			auto g = fm.get_guild(event.command.guild_id);
-			g->read([&](const Guild& gg) {
-				for (auto& [it, u] : gg.get_users()) {
-					users.push_back({ u.get_user_id(), u.get_user_exp_text() });
-				}
+		auto g = fm.get_guild(event.command.guild_id);
+		int access_lvl = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
-			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
-				return a.second > b.second;
-				});
-			int it = 0;
-			reply = to_utf8(L"## Лидеры по опыту в чате : \n");
-			for (auto [user, exp] : users) {
-				if (lenght <= it) {
-					break;
+		if (access_lvl >= 1) {
+			std::string type = std::get<std::string>(event.get_parameter("type"));
+			std::string large = std::get<std::string>(event.get_parameter("large"));
+			std::string reply;
+			int lenght = std::stoi(large);
+			dpp::embed e = dpp::embed().set_color(dpp::colors::purple_amethyst);
+			if (type == "xp_text") {
+				std::vector<std::pair<dpp::snowflake, int>> users;
+				auto g = fm.get_guild(event.command.guild_id);
+				g->read([&](const Guild& gg) {
+					for (auto& [it, u] : gg.get_users()) {
+						users.push_back({ u.get_user_id(), u.get_user_exp_text() });
+					}
+					});
+				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
+					return a.second > b.second;
+					});
+				int it = 0;
+				for (auto [user, exp] : users) {
+					if (lenght <= it) {
+						break;
+					}
+					it++;
+					reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> " + to_utf8(L" **Опыт:** ") + std::to_string(exp) + "\n";
+
 				}
-				it++;
-				reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> " + to_utf8(L" **Опыт:** ") + std::to_string(exp) + "\n";
-				
+				e.set_title(to_utf8(L"Лидеры по опыту в чате : \n"));
+				e.set_description(reply);
 			}
-		}
-		else if (type == "xp_voice") {
-			std::vector<std::pair<dpp::snowflake, int>> users;
-			auto g = fm.get_guild(event.command.guild_id);
-			g->read([&](const Guild& gg) {
-				for (auto& [it, u] : gg.get_users()) {
-					users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
-				}
-			});
-			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
-				return a.second > b.second;
-				});
-			int it = 0;
-			reply = to_utf8(L"## Лидеры по опыту в голосе : \n");
-			for (auto [user, exp] : users) {
-				if (lenght <= it) {
-					break;
-				}
-				it++;
-				float expf = static_cast<float>(exp);
-				float hours = std::round(expf * 15 / 3600 * 10.0f) / 10.0f;
+			else if (type == "xp_voice") {
+				std::vector<std::pair<dpp::snowflake, int>> users;
+				auto g = fm.get_guild(event.command.guild_id);
+				g->read([&](const Guild& gg) {
+					for (auto& [it, u] : gg.get_users()) {
+						users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
+					}
+					});
+				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
+					return a.second > b.second;
+					});
+				int it = 0;
+				for (auto [user, exp] : users) {
+					if (lenght <= it) {
+						break;
+					}
+					it++;
+					float expf = static_cast<float>(exp);
+					float hours = std::round(expf * 15 / 3600 * 10.0f) / 10.0f;
 
-				std::ostringstream ss;
-				ss << std::fixed << std::setprecision(1) << hours;
+					std::ostringstream ss;
+					ss << std::fixed << std::setprecision(1) << hours;
 
-				reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> "
-					+ to_utf8(L" **Опыт:** ") + std::to_string(exp) + to_utf8(L"   :microphone: ")
-					+ ss.str() + to_utf8(L"**ч** \n");
+					reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> "
+						+ to_utf8(L" **Опыт:** ") + std::to_string(exp) + to_utf8(L"   :microphone: ")
+						+ ss.str() + to_utf8(L"**ч** \n");
+				}
+				e.set_title(to_utf8(L"Лидеры по опыту в голосе : \n"));
+				e.set_description(reply);
 			}
-		}
-		else if (type == "mute_time") {
-			std::vector<std::pair<dpp::snowflake, int>> users;
-			auto g = fm.get_guild(event.command.guild_id);
-			g->read([&](const Guild& gg) {
-				for (auto& [it, u] : gg.get_users()) {
-					users.push_back({ u.get_user_id(), u.get_time_muted() });
-				}
-			});
-			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
-				return a.second > b.second;
-				});
-			int it = 0;
-			reply = to_utf8(L"## Лидеры без микрофона в голосе : \n");
-			for (auto [user, exp] : users) {
-				if (lenght <= it) {
-					break;
-				}
-				it++;
-				float expf = static_cast<float>(exp);
-				float hours = std::round(expf * 15 / 3600 * 10.0f) / 10.0f;
+			else if (type == "mute_time") {
+				std::vector<std::pair<dpp::snowflake, int>> users;
+				auto g = fm.get_guild(event.command.guild_id);
+				g->read([&](const Guild& gg) {
+					for (auto& [it, u] : gg.get_users()) {
+						users.push_back({ u.get_user_id(), u.get_time_muted() });
+					}
+					});
+				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
+					return a.second > b.second;
+					});
+				int it = 0;
+				for (auto [user, exp] : users) {
+					if (lenght <= it) {
+						break;
+					}
+					it++;
+					float expf = static_cast<float>(exp);
+					float hours = std::round(expf * 15 / 3600 * 10.0f) / 10.0f;
 
-				std::ostringstream ss;
-				ss << std::fixed << std::setprecision(1) << hours; 
+					std::ostringstream ss;
+					ss << std::fixed << std::setprecision(1) << hours;
 
-				reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> "
-					+ to_utf8(L" **Опыт:** ") + std::to_string(exp) + to_utf8(L"   :microphone: ")
-					+ ss.str() + to_utf8(L"**ч** \n");
+					reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> "
+						+ to_utf8(L" **Опыт:** ") + std::to_string(exp) + to_utf8(L"   :microphone: ")
+						+ ss.str() + to_utf8(L"**ч** \n");
+				}
+				e.set_title(to_utf8(L"Лидеры без микрофона в голосе : \n"));
+				e.set_description(reply);
 			}
-		}else if (type == "xp_swear") {
-			std::vector<std::pair<dpp::snowflake, int>> users;
-			auto g = fm.get_guild(event.command.guild_id);
-			g->read([&](const Guild& gg) {
-				for (auto& [it, u] : gg.get_users()) {
-					users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
-				}
-			});
-			std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
-				return a.second > b.second;
-				});
-			int it = 0;
-			reply = to_utf8(L"## Лидеры по матершинице в чате : \n");
-			for (auto [user, exp] : users) {
-				if (lenght <= it) {
-					break;
-				}
-				it++;
-				reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> " + to_utf8(L" **Опыт:** ") + std::to_string(exp) + "\n";
+			else if (type == "xp_swear") {
+				std::vector<std::pair<dpp::snowflake, int>> users;
+				auto g = fm.get_guild(event.command.guild_id);
+				g->read([&](const Guild& gg) {
+					for (auto& [it, u] : gg.get_users()) {
+						users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
+					}
+					});
+				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
+					return a.second > b.second;
+					});
+				int it = 0;
+				for (auto [user, exp] : users) {
+					if (lenght <= it) {
+						break;
+					}
+					it++;
+					reply = reply + "> " + std::to_string(it) + "# <@" + std::to_string(user) + "> " + to_utf8(L" **Опыт:** ") + std::to_string(exp) + "\n";
 
+				}
+				e.set_title(to_utf8(L"Лидеры по матершинице в чате : \n"));
+				e.set_description(reply);
 			}
-		}
-		
-		event.reply(reply);
-		};
+
+
+			event.reply(e);
+		}};
 }
 int main()
 {
@@ -2162,7 +2472,7 @@ int main()
 			handlers_cmd[name](event);
 		}
 		else {
-			event.reply(to_utf8(L"Команда не реализована."));
+			event.reply(dpp::message(to_utf8(L"Команда недоступна.")).set_flags(dpp::m_ephemeral));
 		}
 		});
 
@@ -2190,14 +2500,16 @@ int main()
 			if (!u) { return std::unordered_map<int, std::string>(); }
 			return u->get_warns();
 			});
-		bool is_admin = g->read([&](const Guild& gg) {
-			const User* u = gg.get_user(user_id);
-			return u ? u->is_admin() : false;
+		int access_lvl = g->read([&](const Guild& gg) {
+			const User* uu = gg.get_user(event.command.usr.id);
+			if (uu) return uu->get_access_lvl();
+			return 1;
 			});
+
 
 		dpp::interaction_response resp(dpp::ir_autocomplete_reply);
 		size_t it = 0;
-		if (is_admin) {
+		if (access_lvl >= 4) {
 			for (const auto& [id, reason] : warns) {
 				size_t size = 0;
 				if (reason.size() < 120) {
@@ -2209,11 +2521,11 @@ int main()
 				if (it >= 25) break;
 			}
 			if (warns.empty()) {
-				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(0)));
+				resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"Варны отсутствуют."), std::to_string(-1)));
 			}
 		}
 		else {
-			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"У вас нет доступа."), std::to_string(0)));
+			resp.add_autocomplete_choice(dpp::command_option_choice(to_utf8(L"У вас нет доступа."), std::to_string(-1)));
 		}
 		bot.interaction_response_create(
 			event.command.id,
@@ -2290,9 +2602,13 @@ int main()
 				return false;
 			}
 			User u;
-			u.Create_user(g.owner_id, 0, 0, 0, {}, false, true);
+			std::string user_name = replace_user_id_on_it_name(g.owner_id.str(), gg.get_id());
+			u.Create_user(g.owner_id, user_name, 0, 0, 0, {}, false, true, 5);
+			gg.set_owner_id(g.owner_id);
 			gg.add_admins_id(g.owner_id);
 			gg.add_user(u);
+			gg.set_guild_name(g.name);
+
 			return true;
 			});
 
@@ -2423,9 +2739,32 @@ int main()
 						}
 					}
 				}
-				// add_exp for text
+				// add_exp for text || add user || check nickname
 				User* u = gg.get_user(author_id);
-				u->Add_exp_text(1);
+				if (u) {
+					u->Add_exp_text(1);
+					if (u->get_user_name() == "") {
+						u->set_user_name(event.msg.author.username);
+					}
+				}else{
+					if (author_id == owner_id){
+					User temp;
+					temp.Create_user(author_id, event.msg.author.username, 0, 0, 0, {}, false, false, 6);
+					gg.add_user(temp);
+					} else {
+						if (author_id == gg.get_owner_id()) {
+							User temp;
+							temp.Create_user(author_id, event.msg.author.username, 0, 0, 0, {}, false, true, 5);
+							gg.add_user(temp);
+						}
+						else {
+							User temp;
+							temp.Create_user(author_id, event.msg.author.username);
+							gg.add_user(temp);
+						}
+					}
+					
+				}
 			}
 		});
 
@@ -2463,7 +2802,6 @@ int main()
 							User temp_user;
 							temp_user.tts_voice_change(voice);
 
-							// сетевой вызов — уже без всякого лока гильдии
 							std::string path = v.tts_create(reply, &temp_user, std::to_string(guild_id), paths.tts_path, text);
 
 							dpp::message out_msg(channel_id, "Вот твоя озвучка!");
@@ -2487,17 +2825,16 @@ int main()
 							return decltype(data){ history_str, base_prompt, channel_prompt };
 							});
 
-						std::string sys_prompt = data.channel_prompt + "\n\n" + data.base_prompt + " chat history: " + data.history;
+						std::string sys_prompt = data.channel_prompt + "\n\n" + data.base_prompt + "\n chat history: " + data.history;
 
 						std::string prompt =
-							"ответил на ваше сообщение Nyphomania:" + msg.content +
-							" Пользователь написал: " +
-							replace_user_id_on_it_name(message, guild_id);
+							replace_user_id_on_it_name("Пользователь " + msg.author.username + " ответил на ваше сообщение Nyphomania: " + msg.content +
+								" Пользователь написал: " + message, guild_id);
 
 						if (!answered->exchange(true)) {
 							try {
 								auto answer = get_answer(
-									replace_user_id_on_it_name("\nПользователь <@" + std::to_string(author_id) + "> написал: " + prompt, guild_id),
+									replace_user_id_on_it_name( prompt, guild_id),
 									sys_prompt, token_gemini
 								);
 								bot.message_create(dpp::message(channel_id, answer));
@@ -2710,6 +3047,23 @@ int main()
 						});
 				}
 				event.reply("user has un banned in bot.");
+			}
+			if (message.substr(0, message.find(" ")) == "get_user_info" && author_id == owner_id) {
+				auto msg = split(message);
+				dpp::guild_member gm;
+				std::string name;
+				dpp::snowflake user_id;
+					user_id = std::stoull(extract_digits(msg[1]));
+					gm.guild_id = std::stoull(extract_digits(msg[2]));
+					gm.user_id = user_id;
+					if (auto* user = gm.get_user())
+					{
+						name = user->username;
+						event.reply("Name: " + name);
+						return;
+					}
+				event.reply("error <@" + msg[1] + "> " + msg[2]);
+
 			}
 			if (message == "history" && author_id == owner_id) {
 				std::string reply = "### All history here:\n";
@@ -2968,6 +3322,59 @@ int main()
 				(*send_next)(0);
 
 
+			}
+			if (message.substr(0, message.find(" ")) == "update_guilds_owners_to_max_lvl"){
+				std::string reply = "Changes: \n";
+				for (auto& guild : fm.get_guilds()) {
+					reply += guild->modify([&](Guild& gg) {
+						std::string str = "> Guild " + gg.get_id().str() + ":\n";
+						dpp::snowflake guild_owner_id = gg.get_owner_id();
+						std::cout << gg.get_id().str() << "Owner ID: " << guild_owner_id << std::endl;
+						if (gg.get_id() == 0) {
+							str += "Guild owner ID is 0, skipping.\n";
+							return str;
+						}
+						if (gg.has_user(guild_owner_id)) {
+							User* u = gg.get_user(guild_owner_id);
+							if (u) {
+								u->set_access_lvl(5);
+								if (u->get_user_name() != "") {
+									str += "User owner <@" + std::to_string(guild_owner_id) + "> `" + u->get_user_name() + "` access level set to 5.\n";
+								}else{
+									str += "User owner <@" + std::to_string(guild_owner_id) + "> access level set to 5.\n";
+								}
+							}
+						}else{
+							dpp::guild* guild = dpp::find_guild(gg.get_id());
+							if (!gg.has_user(guild->owner_id)) {
+								User temp_user;
+								temp_user.Create_user(guild->owner_id, "", 0, 0, 0, {}, false, true, 5);
+								gg.add_user(temp_user);
+								str += "User owner <@" + std::to_string(guild->owner_id) + "> added to database with zero exp and access level set to 5.\n";
+							}else
+							{
+								gg.set_owner_id(guild->owner_id);
+								gg.get_user(guild->owner_id)->set_access_lvl(5);
+								str += "User owner <@" + std::to_string(guild->owner_id) + "> added to database and access level set to 5.\n";
+							}
+
+						}
+						for (auto& [id, u] : gg.get_users()) {
+							if (u.is_admin()) {
+								u.set_access_lvl(5);
+								if (u.get_user_name() != "") {
+									str += "User <@" + std::to_string(id) + ">`" + u.get_user_name() + "` access level set to 5.\n";
+								}else{
+									str += "User <@" + std::to_string(id) + "> access level set to 5.\n";
+								}
+
+							}
+						}
+						return str;
+					});
+				}
+				std::cout << reply << std::endl;
+				send_long_message(bot, channel_id, reply);
 			}
 
 			if (lmessage.substr(0, message.find(" ")) == "all_users_here_check" && author_id == owner_id) {

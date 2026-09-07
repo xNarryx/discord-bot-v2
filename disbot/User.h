@@ -11,10 +11,12 @@ class User {
 
 private:
 	dpp::snowflake user_id;
-	int exp_text;
-	int exp_voice;
-	int time_muted;
-	int exp_swears;
+	std::string user_name;
+	int exp_text = 0;
+	int exp_voice = 0;
+	int time_muted = 0;
+	int exp_swears = 0;
+	int access_level = 1;
 	std::unordered_map<int, std::string> warns;
 	std::unordered_set<dpp::snowflake> roles_id;
 	bool banned;
@@ -24,7 +26,9 @@ private:
 	bool moderate_text;
 	std::string base_prompt;
 public:
-	void Create_user(dpp::snowflake user_id = 0, int exp_text = 0, int exp_voice = 0, int time_muted = 0, std::unordered_map<int, std::string> warns = {}, bool banned = false, bool admin = false, std::string tts_voice = "&hl=ru-ru&v=Peter", bool tts_enable = false, bool moderate_text = true, std::unordered_set<dpp::snowflake> roles_id = {}, int exp_swears = 0, std::string base_prompt = "Base-user-prompt: ");
+	void Create_user(dpp::snowflake user_id = 0, std::string user_name = "", int exp_text = 0, int exp_voice = 0, int time_muted = 0, std::unordered_map<int, std::string> warns = {},
+		bool banned = false, bool admin = false, int access_level = 1, std::string tts_voice = "&hl=ru-ru&v=Peter", bool tts_enable = false, bool moderate_text = true,
+		std::unordered_set<dpp::snowflake> roles_id = {}, int exp_swears = 0, std::string base_prompt = "Base-user-prompt: ");
 	void Add_exp_text(int exp);
 	void Remove_exp_text(int exp);
 	void Add_exp_voice(int exp);
@@ -42,6 +46,11 @@ public:
 	void tts_enable_change(bool booled) { tts_enable = booled; }
 	void moderate_text_change(bool booled) { moderate_text = booled; }
 	void tts_voice_change(std::string voice);
+	bool set_access_lvl(int i);
+	bool set_user_name(std::string str);
+
+	std::string get_user_name() const { return user_name; }
+	int get_access_lvl() const { return access_level; }
 	dpp::snowflake get_user_id() const;
 	int get_user_exp_text() const;
 	int get_user_exp_voice() const;
@@ -49,10 +58,12 @@ public:
 	std::string get_user_tts_voice() const;
 	int get_user_exp_swears() const;
 	std::unordered_map<int, std::string> get_warns() const;
+
 	bool is_tts_enable() const { return tts_enable; }
 	bool is_moderate_text_enable() const { return moderate_text; }
 	bool is_banned() const { return banned; }
 	bool is_admin() const { return admin; }
+
 	void add_role(dpp::snowflake id);
 	void remove_role(dpp::snowflake id);
 	std::unordered_set<dpp::snowflake> get_roles() const { return roles_id; }
@@ -70,6 +81,7 @@ public:
 
 		nlohmann::json j;
 		j["user_id"] = static_cast<uint64_t>(user_id);
+		j["user_name"] = user_name;
 		j["exp_text"] = exp_text;
 		j["exp_voice"] = exp_voice;
 		j["time_muted"] = time_muted;
@@ -81,6 +93,7 @@ public:
 		j["moderate_text"] = moderate_text;
 		j["exp_swears"] = exp_swears;
 		j["base_prompt"] = base_prompt;
+		j["access_level"] = access_level;
 		for (const auto& id : roles_id)
 			j["roles_id"].push_back(static_cast<uint64_t>(id));
 
@@ -92,6 +105,7 @@ public:
 		User u;
 
 		u.user_id = j.value("user_id", 0ULL);
+		u.user_name = j.value("user_name", "");
 		u.exp_text = j.value("exp_text", 0);
 		u.exp_voice = j.value("exp_voice", 0);
 		u.time_muted = j.value("time_muted", 0);
@@ -102,6 +116,7 @@ public:
 		u.tts_enable = j.value("tts_enable", false);
 		u.moderate_text = j.value("moderate_text", true);
 		u.base_prompt = j.value("base_prompt", "");
+		u.access_level = j.value("access_level", 1);	
 
 		if (j.contains("warns") && j["warns"].is_object()) {
 			for (auto it = j["warns"].begin(); it != j["warns"].end(); ++it) {

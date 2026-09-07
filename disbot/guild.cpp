@@ -2,13 +2,16 @@
 #include "User.h"
 #include <nlohmann/json.hpp>
 
-void Guild::create_guild(dpp::snowflake guild_id, std::unordered_set<dpp::snowflake> banned_ids,
-	std::unordered_set<dpp::snowflake> admin_ids, std::unordered_set<dpp::snowflake> banned_channels,
-	std::unordered_set<dpp::snowflake> tts_channels, std::unordered_map<dpp::snowflake, User> users,
+void Guild::create_guild(dpp::snowflake guild_id, dpp::snowflake owner_id, std::string guild_name,
+	std::unordered_set<dpp::snowflake> banned_ids, std::unordered_set<dpp::snowflake> admin_ids,
+	std::unordered_set<dpp::snowflake> banned_channels, std::unordered_set<dpp::snowflake> tts_channels,
+	std::unordered_map<dpp::snowflake, User> users,
 	std::unordered_set<std::string> banned_words, std::unordered_map<std::string, AutoReplyData> auto_reply,
 	std::vector<lvl_role> lvl_roles, std::chrono::system_clock::time_point last_time_active,
 	int messages_count, int users_in_voices, bool anti_swears){
 	this->guild_id = guild_id;
+	this->owner_id = owner_id;
+	this->guild_name = guild_name;
 	this->banned_ids = banned_ids;
 	this->admin_ids = admin_ids;
 	this->banned_channels = banned_channels;

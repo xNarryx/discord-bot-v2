@@ -27,6 +27,8 @@ struct AI_reply {
 class Guild {
 private:
 	dpp::snowflake guild_id;
+	dpp::snowflake owner_id;
+	std::string guild_name;
 	std::unordered_set<dpp::snowflake> banned_ids;
 	std::unordered_set<dpp::snowflake> admin_ids;
 	std::unordered_set<dpp::snowflake> banned_channels;
@@ -42,7 +44,7 @@ private:
     bool anti_swears;
 	mutable std::shared_mutex mutex_guild;
 public:
-    void create_guild(dpp::snowflake guild_id = 0, std::unordered_set<dpp::snowflake> banned_ids = {},
+    void create_guild(dpp::snowflake guild_id = 0, dpp::snowflake owner_id = 0, std::string guild_name = "", std::unordered_set<dpp::snowflake> banned_ids = {},
         std::unordered_set<dpp::snowflake> admin_ids = {},
         std::unordered_set<dpp::snowflake> banned_channels = {},
         std::unordered_set<dpp::snowflake> tts_channels = {},
@@ -102,7 +104,12 @@ public:
     void add_messages_count(int i);
     void set_users_in_voice(int i);
     void update_last_active();
+	void set_owner_id(dpp::snowflake owner_id) { this->owner_id = owner_id; }
+	void set_guild_name(std::string str) { this->guild_name = str; }
 
+
+	dpp::snowflake get_owner_id() const { return owner_id; }
+	std::string get_guild_name() const { return guild_name; }
     std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel);
     std::string get_auto_reply_message(const std::string word, const dpp::snowflake channel) const;
     std::unordered_map<std::string, AutoReplyData> get_auto_reply_messages() const { return auto_reply; }
@@ -118,12 +125,19 @@ public:
 	const auto& get_banned_ids() const { return banned_ids; }
 	const auto& get_admin_ids() const { return admin_ids; }
 	const auto& get_users() const { return users; }
+    auto& get_users() { return users; }
     const auto& get_banned_channel_list() const { return banned_channels; }
 	bool remove_user(dpp::snowflake user_id);
     
     nlohmann::json to_json() const {
         nlohmann::json j;
         j["guild_id"] = static_cast<uint64_t>(guild_id);
+
+		// owner_id
+		j["owner_id"] = static_cast<uint64_t>(owner_id);
+
+		// guild_name
+		j["guild_name"] = guild_name;
 
         // users
         for (const auto& [uid, user] : users)
@@ -204,6 +218,12 @@ public:
         auto g = std::make_shared<Guild>();
 
         g->guild_id = j.value("guild_id", 0ULL);
+
+		// owner_id
+        g->owner_id = j.value("owner_id", 0ULL);
+
+		// guild_name
+		g->guild_name = j.value("guild_name", "");
 
         // users
         for (const auto& u : j["users"]) {
