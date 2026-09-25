@@ -2301,7 +2301,9 @@ void load_commads(dpp::cluster& bot) {
 				auto g = fm.get_guild(event.command.guild_id);
 				g->read([&](const Guild& gg) {
 					for (auto& [it, u] : gg.get_users()) {
-						users.push_back({ u.get_user_id(), u.get_user_exp_text() });
+						if (u.get_access_lvl() >= 1) {
+							users.push_back({ u.get_user_id(), u.get_user_exp_text() });
+						}
 					}
 					});
 				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
@@ -2324,7 +2326,9 @@ void load_commads(dpp::cluster& bot) {
 				auto g = fm.get_guild(event.command.guild_id);
 				g->read([&](const Guild& gg) {
 					for (auto& [it, u] : gg.get_users()) {
-						users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
+						if (u.get_access_lvl() >= 1) {
+							users.push_back({ u.get_user_id(), u.get_user_exp_voice() });
+						}
 					}
 					});
 				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
@@ -2354,7 +2358,9 @@ void load_commads(dpp::cluster& bot) {
 				auto g = fm.get_guild(event.command.guild_id);
 				g->read([&](const Guild& gg) {
 					for (auto& [it, u] : gg.get_users()) {
-						users.push_back({ u.get_user_id(), u.get_time_muted() });
+						if (u.get_access_lvl() >= 1) {
+							users.push_back({ u.get_user_id(), u.get_time_muted() });
+						}
 					}
 					});
 				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
@@ -2384,7 +2390,9 @@ void load_commads(dpp::cluster& bot) {
 				auto g = fm.get_guild(event.command.guild_id);
 				g->read([&](const Guild& gg) {
 					for (auto& [it, u] : gg.get_users()) {
-						users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
+						if (u.get_access_lvl() >= 1) {
+							users.push_back({ u.get_user_id(), u.get_user_exp_swears() });
+						}
 					}
 					});
 				std::sort(users.begin(), users.end(), [](auto& a, auto& b) {
